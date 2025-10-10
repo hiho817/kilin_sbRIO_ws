@@ -2,3 +2,11 @@
 build/
 log/
 install/
+*.swp
+*.swo
+*.un~
+*.cpp~
+*.hpp~
+*.yaml~
+*.txt~
+*.gitignore~

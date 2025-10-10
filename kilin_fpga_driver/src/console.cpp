@@ -7,7 +7,7 @@ using namespace std;
 mutex cons_mtx_;
 int refresh_flag;
 
-void Console::init(FpgaHandler *fpga, vector<LegModule> *mods_, std::vector<bool> *pb_state_ptr_, ModeFsm *fsm_ptr_, std::mutex *mtx_ptr_)
+void Console::init(FpgaHandler *fpga, vector<HipModule> *mods_, std::vector<bool> *pb_state_ptr_, ModeFsm *fsm_ptr_, std::mutex *mtx_ptr_)
 {
     fpga_ = fpga;
 
@@ -43,11 +43,12 @@ void Console::refreshWindow()
     clear();
 
     int refresh_period_ = (int)(1 / frontend_rate_) * 1000000;
-    LegModule *lm_null = 0;
+    HipModule *lm_null = 0;
     Panel p_power_("[P] Power Board ", "power", lm_null, 1, 9, 60, 40, true);
     Panel p_cmain_("[F] FPGA Server ", "c_main", lm_null, 1, 1, 8, 40, true);
     Panel p_modL_("[L] L_Module ", "module", modL_ptr_, 41, 1, (term_max_y_ - 2) / 2 - 1, 60, true);
     Panel p_modR_("[R] R_Module ", "module", modR_ptr_, 41, (term_max_y_) / 2, (term_max_y_ - 2) / 2 - 1, 60, true);
+    // Panel p_modS1_("[1] Steering1 ", "module", modL_ptr_, 93, 1, (term_max_y_ - 2) / 2 - 1, 60, true);
 
     p_power_.powerboard_state_ = powerboard_state_;
     p_cmain_.fsm_ = fsm_;
@@ -60,13 +61,14 @@ void Console::refreshWindow()
         p_cmain_.infoDisplay(Behavior::TCP_SLAVE, fsm_->workingMode_);
         p_modL_.infoDisplay();
         p_modR_.infoDisplay();
+        // p_modS1_.infoDisplay();
         cons_mtx_.unlock();
 
         usleep(0.1 * 1000 * 1000);
     }
 }
 
-void InputPanel::init(vector<LegModule> *mods_, bool *if_resetPanel, int term_max_x, int term_max_y)
+void InputPanel::init(vector<HipModule> *mods_, bool *if_resetPanel, int term_max_x, int term_max_y)
 {
     win_ = newwin(3, term_max_x - 1, term_max_y - 3, 1);
 
@@ -153,7 +155,7 @@ void InputPanel::commandDecode(string buf)
     bool f_selected = false;
 
     bool switchFSM_success = true;
-    LegModule *md_ptr_;
+    HipModule *md_ptr_;
 
     vector<string> bufs;
     bufs = tokenizer(buf);
@@ -408,7 +410,7 @@ vector<string> InputPanel::tokenizer(string s)
     return bufs;
 }
 
-Panel::Panel(string title, string type, LegModule *lm_, int org_x, int org_y, int height, int width, bool box_on)
+Panel::Panel(string title, string type, HipModule *lm_, int org_x, int org_y, int height, int width, bool box_on)
 {
     org_x_ = org_x;
     org_y_ = org_y;
@@ -442,12 +444,12 @@ Panel::Panel(string title, string type, LegModule *lm_, int org_x, int org_y, in
     // refresh();
 }
 
-void Panel::infoDisplay()
+void Panel::infoDisplay() // type = module
 {
     int y_org = 2;
 
     // Motor_F
-    mvwprintw(win_, 1, 1, "[F] Motor_F-----------------------------------------------");
+    mvwprintw(win_, 1, 1, "[F] Motor_F---------------------------------------");
     mvwprintw(win_, 2, 1, "[C] [CAN] ID: %9d", md_ptr_->motors_list_[0].CAN_ID_);
     mvwprintw(win_, 3, 1, "    [tx] TIMEDOUT: %4d", md_ptr_->CAN_tx_timedout_[0]);
     mvwprintw(win_, y_org + 2, 1, "[A] [tx] Pos:  %5.5f", md_ptr_->txdata_buffer_[0].position_);
@@ -465,7 +467,7 @@ void Panel::infoDisplay()
     mvwprintw(win_, y_org + 7, 30, "[rx] Cal:   %7d", md_ptr_->rxdata_buffer_[0].calibrate_finish_);
 
     // Motor_H
-    mvwprintw(win_, 10, 1, "[H] Motor_H-----------------------------------------------");
+    mvwprintw(win_, 10, 1, "[H] Motor_H---------------------------------------");
     mvwprintw(win_, 11, 1, "[C] [CAN] ID: %9d", md_ptr_->motors_list_[1].CAN_ID_);
     mvwprintw(win_, 12, 1, "    [tx] TIMEDOUT: %4d", md_ptr_->CAN_tx_timedout_[1]);
     mvwprintw(win_, y_org + 11, 1, "[A] [tx] Pos:  %5.5f", md_ptr_->txdata_buffer_[1].position_);
@@ -484,7 +486,7 @@ void Panel::infoDisplay()
     wrefresh(win_);
 }
 
-void Panel::infoDisplay(FpgaHandler *fpga_, bool digital_switch, bool signal_switch, bool power_switch)
+void Panel::infoDisplay(FpgaHandler *fpga_, bool digital_switch, bool signal_switch, bool power_switch) // type = power
 {
     mvwprintw(win_, 2, 1, "HARDWARE POWER SWITCH ----------------");
     mvwprintw(win_, 3, 1, "[D] Digital:   %4d", digital_switch);
@@ -508,7 +510,7 @@ void Panel::infoDisplay(FpgaHandler *fpga_, bool digital_switch, bool signal_swi
     wrefresh(win_);
 }
 
-void Panel::infoDisplay(Behavior bhv, Mode fsm_mode)
+void Panel::infoDisplay(Behavior bhv, Mode fsm_mode) // type = c_main
 {
     if (bhv == Behavior::TCP_SLAVE)
         mvwprintw(win_, 2, 1, "Behavior: TCP_SLAVE");

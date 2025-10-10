@@ -11,11 +11,11 @@
 #include "msg.hpp"
 #include "fpga_handler.hpp"
 
-class LegModule
+class HipModule
 {
 public:
-  LegModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
-  LegModule(){
+  HipModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
+  HipModule(){
   }
 
   // ID of Module (F,H)

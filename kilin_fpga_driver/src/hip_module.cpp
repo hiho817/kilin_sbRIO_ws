@@ -1,6 +1,6 @@
-#include <leg_module.hpp>
+#include <hip_module.hpp>
 
-LegModule::LegModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session)
+HipModule::HipModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session)
 {
     label_ = _label;
     config_ = _config;
@@ -57,7 +57,7 @@ LegModule::LegModule(std::string _label, YAML::Node _config, NiFpga_Status _stat
     io_.CAN_setup(CAN_timeout_us);
 }
 
-void LegModule::load_config()
+void HipModule::load_config()
 {
     Motor motor_f;
     Motor motor_h;
@@ -120,7 +120,7 @@ void LegModule::load_config()
     std::cout << std::setw(14) << "---------------------------" << std::endl;
 }
 
-void LegModule::CAN_timeoutCheck()
+void HipModule::CAN_timeoutCheck()
 {
     CAN_rx_timedout_[0] = io_.read_rx_timeout_();
     CAN_tx_timedout_[0] = io_.read_tx_timeout_();

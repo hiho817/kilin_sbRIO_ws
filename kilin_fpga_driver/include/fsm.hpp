@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <Eigen/Dense>
 
-#include "leg_module.hpp"
+#include "hip_module.hpp"
 
 #include "Motor.pb.h"
 #include "Power.pb.h"
@@ -28,14 +28,14 @@ class ModeFsm
 {
 public:
   /* pass modules vector by reference*/
-  ModeFsm(std::vector<LegModule> *module_list_, std::vector<bool> *pb_state_, double *pb_v);
+  ModeFsm(std::vector<HipModule> *module_list_, std::vector<bool> *pb_state_, double *pb_v);
   ModeFsm() {}
   Mode workingMode_;
   Mode prev_workingMode_;
 
   Scenario scenario_;
 
-  std::vector<LegModule> *modules_list_;
+  std::vector<HipModule> *modules_list_;
   std::vector<bool> *pb_state_;
 
   bool hall_calibrated;
