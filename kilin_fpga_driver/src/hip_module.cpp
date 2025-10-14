@@ -129,9 +129,13 @@ void HipModule::CAN_timeoutCheck()
     CAN_mtr_timedout[1] = CAN_rx_timedout_[1] || CAN_tx_timedout_[1];
 
     CAN_module_timedout = CAN_mtr_timedout[0] || CAN_mtr_timedout[1];
+<<<<<<< HEAD:kilin_fpga_driver/src/hip_module.cpp
 }
 
 double deg2rad(double deg)
 {
     return deg * M_PI / 180.0;
 }
+=======
+}
+>>>>>>> 681df20e1ccc4a2c45f8a98f271f4b7ee1c6b937:kilin_fpga_driver/src/leg_module.cpp

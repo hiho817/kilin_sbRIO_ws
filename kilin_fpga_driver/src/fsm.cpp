@@ -207,6 +207,24 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg, const motor_msg
                     {
                         switch (index)
                         {
+                            /*********************************************/
+                            // case 0:                  case 1:
+                            // MOD1CAN0 (module_L)      MOD2CAN1 (module_R)
+                            //  CAN1 LF (module_a)       CAN1 RF (module_b)
+                            //  CAN2 LH (module_d)       CAN2 RH (module_c)
+                            /*********************************************/
+                            //  +-------+--------+       +--------+-------+
+                            //  | CAN0-port0     |       | CAN1-port0     |
+                            //  | module_a (LF)  |       | module_b (RF)  |
+                            //  | Left Front Hip |       | Right Front Hip|
+                            //  +----------------+       +----------------+
+                            //  
+                            //  +----------------+       +----------------+
+                            //  | CAN0-port1     |       | CAN1-port1     |
+                            //  | module_d (LH)  |       | module_c (RH)  |
+                            //  | Left Hind Hip  |       | Right Hind Hip |
+                            //  +----------------+       +----------------+
+                            /*********************************************/
                             case 0:
                             {   
 				// std::cout<< "motor_a_position_msg: " << motor_cmd_msg.module_a().hip().position() << std::endl;
@@ -216,27 +234,27 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg, const motor_msg
                                 mod.txdata_buffer_[0].KI_ = motor_cmd_msg.module_a().hip().ki();
                                 mod.txdata_buffer_[0].KD_ = motor_cmd_msg.module_a().hip().kd();
 
-                                mod.txdata_buffer_[1].position_ = motor_cmd_msg.module_b().hip().position();
-                                mod.txdata_buffer_[1].torque_ = motor_cmd_msg.module_b().hip().torque();
-                                mod.txdata_buffer_[1].KP_ = motor_cmd_msg.module_b().hip().kp();
-                                mod.txdata_buffer_[1].KI_ = motor_cmd_msg.module_b().hip().ki();
-                                mod.txdata_buffer_[1].KD_ = motor_cmd_msg.module_b().hip().kd();
+                                mod.txdata_buffer_[1].position_ = motor_cmd_msg.module_d().hip().position();
+                                mod.txdata_buffer_[1].torque_ = motor_cmd_msg.module_d().hip().torque();
+                                mod.txdata_buffer_[1].KP_ = motor_cmd_msg.module_d().hip().kp();
+                                mod.txdata_buffer_[1].KI_ = motor_cmd_msg.module_d().hip().ki();
+                                mod.txdata_buffer_[1].KD_ = motor_cmd_msg.module_d().hip().kd();
                             }
                             break;
 
                             case 1:
                             {
-                                mod.txdata_buffer_[0].position_ = motor_cmd_msg.module_c().hip().position();
-                                mod.txdata_buffer_[0].torque_ = motor_cmd_msg.module_c().hip().torque();
-                                mod.txdata_buffer_[0].KP_ = motor_cmd_msg.module_c().hip().kp();
-                                mod.txdata_buffer_[0].KI_ = motor_cmd_msg.module_c().hip().ki();
-                                mod.txdata_buffer_[0].KD_ = motor_cmd_msg.module_c().hip().kd();
+                                mod.txdata_buffer_[0].position_ = motor_cmd_msg.module_b().hip().position();
+                                mod.txdata_buffer_[0].torque_ = motor_cmd_msg.module_b().hip().torque();
+                                mod.txdata_buffer_[0].KP_ = motor_cmd_msg.module_b().hip().kp();
+                                mod.txdata_buffer_[0].KI_ = motor_cmd_msg.module_b().hip().ki();
+                                mod.txdata_buffer_[0].KD_ = motor_cmd_msg.module_b().hip().kd();
 
-                                mod.txdata_buffer_[1].position_ = motor_cmd_msg.module_d().hip().position();
-                                mod.txdata_buffer_[1].torque_ = motor_cmd_msg.module_b().hip().torque();
-                                mod.txdata_buffer_[1].KP_ = motor_cmd_msg.module_b().hip().kp();
-                                mod.txdata_buffer_[1].KI_ = motor_cmd_msg.module_b().hip().ki();
-                                mod.txdata_buffer_[1].KD_ = motor_cmd_msg.module_b().hip().kd();
+                                mod.txdata_buffer_[1].position_ = motor_cmd_msg.module_c().hip().position();
+                                mod.txdata_buffer_[1].torque_ = motor_cmd_msg.module_c().hip().torque();
+                                mod.txdata_buffer_[1].KP_ = motor_cmd_msg.module_c().hip().kp();
+                                mod.txdata_buffer_[1].KI_ = motor_cmd_msg.module_c().hip().ki();
+                                mod.txdata_buffer_[1].KD_ = motor_cmd_msg.module_c().hip().kd();
                             }
                             break;
                         }

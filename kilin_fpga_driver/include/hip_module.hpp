@@ -44,12 +44,14 @@ public:
   // ModuleIO
   void load_config();
   void CAN_timeoutCheck();
-
-
 };
 
+<<<<<<< HEAD:kilin_fpga_driver/include/hip_module.hpp
 double deg2rad(double deg);
 Eigen::Vector2d tb2phi(const Eigen::Vector2d &tb);
 Eigen::Vector2d phi2tb(const Eigen::Vector2d &phi);
 
 #endif
+=======
+#endif
+>>>>>>> 681df20e1ccc4a2c45f8a98f271f4b7ee1c6b937:kilin_fpga_driver/include/leg_module.hpp

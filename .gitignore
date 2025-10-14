@@ -2,6 +2,7 @@
 build/
 log/
 install/
+<<<<<<< HEAD
 *.swp
 *.swo
 *.swn
@@ -11,3 +12,7 @@ install/
 *.yaml~
 *.txt~
 *.gitignore~
+=======
+third_party/grpc/
+TEST/
+>>>>>>> 681df20e1ccc4a2c45f8a98f271f4b7ee1c6b937
