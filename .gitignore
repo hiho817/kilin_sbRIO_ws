@@ -4,6 +4,7 @@ log/
 install/
 *.swp
 *.swo
+*.swn
 *.un~
 *.cpp~
 *.hpp~
