@@ -2,7 +2,7 @@
 
 /* TCP node connection setup*/
 
-core::NodeHandler Kilin::nh;
+// core::NodeHandler Kilin::nh;
 std::mutex Kilin::mutex_;
 bool Kilin::grpc_hip_motor_cmd_updated_ = true;
 bool Kilin::grpc_power_cmd_updated_ = true;
@@ -329,12 +329,13 @@ int main(int argc, char* argv[])
     Kilin kilin;
     
     /* gRPC Topic */
+    core::NodeHandler& nh = kilin.getNodeHandler();
 
-    core::Publisher<power_msg::PowerStateStamped>& power_pub = kilin.nh.advertise<power_msg::PowerStateStamped>("power/state");
-    core::Subscriber<power_msg::PowerCmdStamped>& power_sub = kilin.nh.subscribe<power_msg::PowerCmdStamped>("power/command", 1000, kilin.grpc_power_sub_cb);
+    core::Publisher<power_msg::PowerStateStamped>& power_pub = nh.advertise<power_msg::PowerStateStamped>("power/state");
+    core::Subscriber<power_msg::PowerCmdStamped>& power_sub = nh.subscribe<power_msg::PowerCmdStamped>("power/command", 1000, kilin.grpc_power_sub_cb);
 
-    core::Publisher<motor_msg::MotorStateStamped>& motor_pub = kilin.nh.advertise<motor_msg::MotorStateStamped>("motor/state");
-    core::Subscriber<motor_msg::MotorCmdStamped>& motor_sub = kilin.nh.subscribe<motor_msg::MotorCmdStamped>("motor/command", 1000, kilin.grpc_motor_sub_cb);
+    core::Publisher<motor_msg::MotorStateStamped>& motor_pub = nh.advertise<motor_msg::MotorStateStamped>("motor/state");
+    core::Subscriber<motor_msg::MotorCmdStamped>& motor_sub = nh.subscribe<motor_msg::MotorCmdStamped>("motor/command", 1000, kilin.grpc_motor_sub_cb);
 
     kilin.main_loop(power_sub, power_pub, motor_sub, motor_pub);
 

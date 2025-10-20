@@ -21,7 +21,7 @@
 #undef OK
 
 class ModuleIO{
-public:
+  public:
     ModuleIO(NiFpga_Status status_, NiFpga_Session fpga_session_, std::string CAN_port_,
         std::vector<Motor> *motors_list);
 
