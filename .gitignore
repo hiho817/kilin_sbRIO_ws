@@ -1,5 +1,6 @@
 .vscode/
 build/
+build_stable_*
 log/
 install/
 third_party/grpc/
@@ -13,3 +14,5 @@ TEST/
 *.yaml~
 *.txt~
 *.gitignore~
+third_party/grpc/
+TEST/

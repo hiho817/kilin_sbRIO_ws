@@ -44,6 +44,8 @@ public:
   // ModuleIO
   void load_config();
   void CAN_timeoutCheck();
+
+
 };
 
 double deg2rad(double deg);
