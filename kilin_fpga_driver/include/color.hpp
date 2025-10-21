@@ -1,8 +1,8 @@
 #ifndef __COLOR_H
 #define __COLOR_H
 
-#include <string>
 #include <iostream>
+#include <string>
 
 const std::string red("\033[0;31m");
 const std::string green("\033[1;32m");

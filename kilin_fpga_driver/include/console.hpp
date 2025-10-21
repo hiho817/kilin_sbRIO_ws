@@ -5,32 +5,31 @@
 #define CYAN_PAIR 2
 #define NCURSES_NOMACROS
 
-#include "hip_module.hpp"
-#include "fsm.hpp"
+#include <locale.h>
+#include <ncurses.h>
+#include <unistd.h>
 
-#include <iostream>
-#include <string>
-#include <thread>
-#include <mutex>
 #include <algorithm>
 #include <iomanip>
-#include <unistd.h>
-#include <ncurses.h>
-#include <locale.h>
+#include <iostream>
 #include <mode.hpp>
+#include <mutex>
+#include <string>
+#include <thread>
+
+#include "fsm.hpp"
+#include "hip_module.hpp"
 #undef OK
 
 using namespace std;
 
-class Panel
-{
-public:
-  Panel(string title, string type, HipModule *lm_, int org_x, int org_y, int height_, int width_, bool box_on);
-  Panel()
-  {
-  }
+class Panel {
+ public:
+  Panel(string title, string type, HipModule* lm_, int org_x, int org_y, int height_, int width_,
+        bool box_on);
+  Panel() {}
 
-  WINDOW *win_;
+  WINDOW* win_;
 
   string title_;
 
@@ -42,57 +41,52 @@ public:
   int width_;
   bool box_on_;
 
-  HipModule *md_ptr_;
-  std::mutex *main_mtx_;
-  std::vector<bool> *powerboard_state_;
-  ModeFsm *fsm_;
+  HipModule* md_ptr_;
+  std::mutex* main_mtx_;
+  std::vector<bool>* powerboard_state_;
+  ModeFsm* fsm_;
 
   mutex mutex_;
   void infoDisplay();
-  void infoDisplay(FpgaHandler *fpga, bool power_switch, bool signal_switch, bool digital_switch);
+  void infoDisplay(FpgaHandler* fpga, bool power_switch, bool signal_switch, bool digital_switch);
   void infoDisplay(Behavior bhv, Mode fsm_mode);
   void resetPanel();
   void panelTitle();
 };
 
-class InputPanel
-{
-public:
-  InputPanel()
-  {
-  }
+class InputPanel {
+ public:
+  InputPanel() {}
 
-  void init(vector<HipModule> *mods_, bool *if_resetPanel, int term_max_x, int term_max_y);
+  void init(vector<HipModule>* mods_, bool* if_resetPanel, int term_max_x, int term_max_y);
 
-  void inputHandler(WINDOW *win_, std::mutex &input_mutex);
-  void reset_input_window(WINDOW *win);
+  void inputHandler(WINDOW* win_, std::mutex& input_mutex);
+  void reset_input_window(WINDOW* win);
   void commandDecode(std::string buf);
   vector<string> tokenizer(std::string s);
   auto getValue(string str);
 
-  WINDOW *win_;
+  WINDOW* win_;
   std::mutex mutex_;
 
-  HipModule *modL_ptr_;
-  HipModule *modR_ptr_;
+  HipModule* modL_ptr_;
+  HipModule* modR_ptr_;
 
-  bool *if_resetPanel;
-  std::mutex *main_mtx_;
-  std::vector<bool> *powerboard_state_;
-  ModeFsm *fsm_;
+  bool* if_resetPanel;
+  std::mutex* main_mtx_;
+  std::vector<bool>* powerboard_state_;
+  ModeFsm* fsm_;
 
-private:
-  std::thread *thread;
+ private:
+  std::thread* thread;
 };
 
-class Console
-{
-public:
-  Console()
-  {
-  }
+class Console {
+ public:
+  Console() {}
 
-  void init(FpgaHandler *fpga_, vector<HipModule> *mods_, std::vector<bool> *pb_state_, ModeFsm *fsm_, std::mutex *mtx_);
+  void init(FpgaHandler* fpga_, vector<HipModule>* mods_, std::vector<bool>* pb_state_,
+            ModeFsm* fsm_, std::mutex* mtx_);
   void refreshWindow();
 
   int term_max_x_;
@@ -100,7 +94,7 @@ public:
   int debug_cons_h = 27;
   int power_cons_h = 27;
 
-  FpgaHandler *fpga_;
+  FpgaHandler* fpga_;
 
   Panel p_cmain_;
   Panel p_debug_;
@@ -111,12 +105,12 @@ public:
   Panel p_control_;
   InputPanel input_panel_;
 
-  HipModule *modL_ptr_;
-  HipModule *modR_ptr_;
+  HipModule* modL_ptr_;
+  HipModule* modR_ptr_;
 
-  std::mutex *main_mtx_;
-  std::vector<bool> *powerboard_state_;
-  ModeFsm *fsm_;
+  std::mutex* main_mtx_;
+  std::vector<bool>* powerboard_state_;
+  ModeFsm* fsm_;
 
   mutex input_mutex_;
   thread t_frontend_;

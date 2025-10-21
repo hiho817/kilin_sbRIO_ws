@@ -1,0 +1,21 @@
+# .clang-format
+# Place this file in your project's root directory
+
+# Start with a popular style as a base
+BasedOnStyle: Google
+
+# --- Your Customizations ---
+
+# This is the key setting to keep braces on the same line for functions, if/else, etc.
+# Other options include: Allman, Stroustrup, GNU
+BreakBeforeBraces: Attach
+
+# Set the maximum number of characters per line to 100.
+# The default for Google style is 80. A value of 0 means unlimited.
+ColumnLimit: 100
+
+# Use spaces instead of tabs.
+UseTab: Never
+
+# Allow short, empty functions like constructors to be on one line.
+AllowShortFunctionsOnASingleLine: All

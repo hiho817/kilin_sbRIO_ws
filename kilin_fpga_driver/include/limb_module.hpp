@@ -1,22 +1,22 @@
 #ifndef __LIMBMODULE_H
 #define __LIMBMODULE_H
 
-#include <iostream>
-#include <vector>
 #include <math.h>
 #include <yaml-cpp/yaml.h>
+
 #include <eigen3/Eigen/Dense>
 #include <iomanip>
+#include <iostream>
+#include <vector>
 
-#include "msg.hpp"
 #include "fpga_handler.hpp"
+#include "msg.hpp"
 
-class LimbModule
-{
-public:
-  LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
-  LimbModule(){
-  }
+class LimbModule {
+ public:
+  LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _status,
+             NiFpga_Session _fpga_session);
+  LimbModule() {}
 
   // ID of Module (F,H)
   std::string label_;
@@ -44,12 +44,10 @@ public:
   // ModuleIO_CAN
   void load_config();
   void RS485_timeoutCheck();
-
-
 };
 
 double deg2rad(double deg);
-Eigen::Vector2d tb2phi(const Eigen::Vector2d &tb);
-Eigen::Vector2d phi2tb(const Eigen::Vector2d &phi);
+Eigen::Vector2d tb2phi(const Eigen::Vector2d& tb);
+Eigen::Vector2d phi2tb(const Eigen::Vector2d& phi);
 
 #endif

@@ -1,22 +1,22 @@
 #ifndef __LEGMODULE_H
 #define __LEGMODULE_H
 
-#include <iostream>
-#include <vector>
 #include <math.h>
 #include <yaml-cpp/yaml.h>
+
 #include <eigen3/Eigen/Dense>
 #include <iomanip>
+#include <iostream>
+#include <vector>
 
-#include "msg.hpp"
 #include "fpga_handler.hpp"
+#include "msg.hpp"
 
-class HipModule
-{
-public:
-  HipModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
-  HipModule(){
-  }
+class HipModule {
+ public:
+  HipModule(std::string _label, YAML::Node _config, NiFpga_Status _status,
+            NiFpga_Session _fpga_session);
+  HipModule() {}
 
   // ID of Module (F,H)
   std::string label_;
@@ -47,7 +47,7 @@ public:
 };
 
 double deg2rad(double deg);
-Eigen::Vector2d tb2phi(const Eigen::Vector2d &tb);
-Eigen::Vector2d phi2tb(const Eigen::Vector2d &phi);
+Eigen::Vector2d tb2phi(const Eigen::Vector2d& tb);
+Eigen::Vector2d phi2tb(const Eigen::Vector2d& phi);
 
 #endif
