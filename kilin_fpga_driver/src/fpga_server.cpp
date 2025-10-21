@@ -32,14 +32,14 @@ void Kilin::grpc_power_sub_cb(power_msg::PowerCmdStamped power_msg)
 
 volatile sig_atomic_t sys_stop = 0;
 /* CAPTURE SYS STOP SIGNAL TO KILL PROCESS*/
-void inthand(int signum)
+void SIGINT_handler(int signum)
 {
     sys_stop = 1;
 }
 
 bool is_sys_stop()
 {
-    return sys_stop;
+    return sys_stop == 0 ? false : true;
 }
 
 Kilin::Kilin()
@@ -71,8 +71,8 @@ Kilin::Kilin()
 
     load_config_();
     console_.init(&fpga_, &hip_can_list_, &powerboard_state_, &fsm_, &main_mtx_);
-
     fpga_.setIrqPeriod(main_irq_period_us_, can_irq_period_us_);
+
 }
 
 void Kilin::load_config_()
@@ -128,7 +128,7 @@ void Kilin::main_loop(
 				core::Publisher<motor_msg::MotorStateStamped>& motor_state_pub_
 		)
 {
-    while (NiFpga_IsNotError(fpga_.status_) && !sys_stop)
+    while (NiFpga_IsNotError(fpga_.status_) && is_sys_stop() == false && console_.get_error_flag() == false)
     {
         uint32_t irqsAsserted;
         uint32_t irqTimeout = 10;  // ms
@@ -164,6 +164,7 @@ void Kilin::main_loop(
             }
         }
         usleep(10);
+        std::cout << "console error flag: " << console_.get_error_flag() << " is sys stop: " << is_sys_stop() << std::endl;
     }
 }
 
@@ -322,7 +323,7 @@ void Kilin::powerboardPack_(power_msg::PowerStateStamped&power_dashboard_reply)
 
 int main(int argc, char* argv[])
 {
-    signal(SIGINT, inthand);
+    signal(SIGINT, SIGINT_handler);
 
     important_message("[FPGA Server] : Launched");
     
@@ -336,7 +337,7 @@ int main(int argc, char* argv[])
 
     core::Publisher<motor_msg::MotorStateStamped>& motor_pub = nh.advertise<motor_msg::MotorStateStamped>("motor/state");
     core::Subscriber<motor_msg::MotorCmdStamped>& motor_sub = nh.subscribe<motor_msg::MotorCmdStamped>("motor/command", 1000, kilin.grpc_motor_sub_cb);
-
+    
     kilin.main_loop(power_sub, power_pub, motor_sub, motor_pub);
 
 		// error handle, exit when error

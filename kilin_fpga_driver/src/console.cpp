@@ -1,6 +1,9 @@
 #include "console.hpp"
 #include <curses.h>
+#include <csignal>
 #include <iterator>
+// #include "fpga_server.hpp"
+
 
 using namespace std;
 
@@ -36,6 +39,8 @@ void Console::init(FpgaHandler *fpga, vector<HipModule> *mods_, std::vector<bool
     if_resetPanel = false;
     t_frontend_ = thread(&Console::refreshWindow, this);
     refresh_flag = 1;
+
+    error_flag_ = false;
 }
 
 void Console::refreshWindow()
@@ -76,6 +81,8 @@ void InputPanel::init(vector<HipModule> *mods_, bool *if_resetPanel, int term_ma
     modR_ptr_ = &mods_->at(1);
 
     thread = new std::thread(&InputPanel::inputHandler, this, win_, std::ref(mutex_));
+
+    error_flag_ = false;
 }
 
 void InputPanel::inputHandler(WINDOW *win_, std::mutex &input_mutex)
@@ -102,6 +109,12 @@ void InputPanel::inputHandler(WINDOW *win_, std::mutex &input_mutex)
                 refresh_flag = 1;
                 refresh();
             }
+            if (ch == 'X')
+            {
+                // Trigger the same shutdown path as Ctrl-C: set sys_stop via signal handler in fpga_server.cpp
+                error_flag_ = true;
+            }
+
 
         } while (ch != ':');
 
