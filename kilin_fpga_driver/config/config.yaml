@@ -12,9 +12,6 @@ CANLoop_period_us: 1000
 # CAN Bus timeout
 CAN_Timeout_us: 1000
 
-# RS485 Bus timeout
-RS485_Timeout_us: 1000
-
 # Measure hall calibration offset
 # Set to 1 when measuring the offset value of each module
 Measure_offset: 0
@@ -29,7 +26,7 @@ Scenario: "Robot"
 # Bias represented in radian
 L_Module:
   Enable: 1
-  CAN_PORT: "MOD1CAN1"
+  CAN_PORT: "MOD1CAN0"
   Motor_F:
     FW_Version: 3
     CAN_ID: 1
@@ -52,7 +49,7 @@ L_Module:
 # MOD B
 R_Module:
   Enable: 1
-  CAN_PORT: "MOD1CAN0"
+  CAN_PORT: "MOD1CAN1"
   Motor_F:
     FW_Version: 3
     CAN_ID: 1

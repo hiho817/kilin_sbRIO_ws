@@ -1,5 +1,5 @@
-#ifndef __HIPMODULE_H
-#define __HIPMODULE_H
+#ifndef __LEGMODULE_H
+#define __LEGMODULE_H
 
 #include <iostream>
 #include <vector>
@@ -44,8 +44,6 @@ public:
   // ModuleIO
   void load_config();
   void CAN_timeoutCheck();
-
-
 };
 
 double deg2rad(double deg);
