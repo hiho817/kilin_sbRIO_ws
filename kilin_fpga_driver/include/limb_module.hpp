@@ -1,5 +1,5 @@
-#ifndef __HIPMODULE_H
-#define __HIPMODULE_H
+#ifndef __LIMBMODULE_H
+#define __LIMBMODULE_H
 
 #include <iostream>
 #include <vector>
@@ -11,11 +11,11 @@
 #include "msg.hpp"
 #include "fpga_handler.hpp"
 
-class HipModule
+class LimbModule
 {
 public:
-  HipModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
-  HipModule(){
+  LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
+  LimbModule(){
   }
 
   // ID of Module (F,H)
@@ -24,26 +24,28 @@ public:
   std::vector<Motor> motors_list_;
 
   // hardware configuration
-  ModuleIO io_;
-  std::string CAN_port_;
+  /* RS485_IO io_; */
+  std::string RS485_port_;
   bool enable_;
-  int CAN_timeout_us;
-  bool CAN_first_transmit_;
+  int RS485_timeout_us;
+  bool RS485_first_transmit_;
 
-  bool CAN_tx_timedout_[2];
-  bool CAN_rx_timedout_[2];
-  bool CAN_mtr_timedout[2];
-  bool CAN_module_timedout;
+  bool RS485_tx_timedout_[2];
+  bool RS485_rx_timedout_[2];
+  bool RS485_mtr_timedout[2];
+  bool RS485_module_timedout;
 
-  CAN_txdata txdata_buffer_[2];
-  CAN_rxdata rxdata_buffer_[2];
+  /* RS485_txdata txdata_buffer_[2]; */
+  /* RS485_rxdata rxdata_buffer_[2]; */
 
   double Motor_F_bias = 0;
   double Motor_H_bias = 0;
 
   // ModuleIO
   void load_config();
-  void CAN_timeoutCheck();
+  void RS485_timeoutCheck();
+
+
 };
 
 double deg2rad(double deg);

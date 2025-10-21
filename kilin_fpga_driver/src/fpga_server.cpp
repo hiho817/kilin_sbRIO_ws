@@ -1,26 +1,32 @@
 #include "fpga_server.hpp"
 
 /* TCP node connection setup*/
-volatile int motor_message_updated = 0;
-volatile int fpga_message_updated = 0; //power
 
-std::mutex mutex_;
+core::NodeHandler Kilin::nh;
+std::mutex Kilin::mutex_;
+bool Kilin::grpc_hip_motor_cmd_updated_ = true;
+bool Kilin::grpc_power_cmd_updated_ = true;
+motor_msg::MotorCmdStamped Kilin::grpc_motor_cmd_data_;
+power_msg::PowerCmdStamped Kilin::grpc_power_cmd_data_;
 
-motor_msg::MotorCmdStamped motor_cmd_data;
-void motor_data_cb(motor_msg::MotorCmdStamped motor_msg)
+NiFpga_Bool Kilin::get_fpga_status()
+{
+	return fpga_.status_;
+}
+
+void Kilin::grpc_motor_sub_cb(motor_msg::MotorCmdStamped motor_msg)
 {
     mutex_.lock();
-    motor_message_updated = 1;
-    motor_cmd_data = motor_msg;
+    grpc_hip_motor_cmd_updated_ = true;
+    grpc_motor_cmd_data_ = motor_msg;
     mutex_.unlock();
 }
 
-power_msg::PowerCmdStamped power_cmd_data;
-void power_data_cb(power_msg::PowerCmdStamped power_msg)
+void Kilin::grpc_power_sub_cb(power_msg::PowerCmdStamped power_msg)
 {
     mutex_.lock();
-    fpga_message_updated = 1;
-    power_cmd_data = power_msg;
+		grpc_power_cmd_updated_ = true;
+    grpc_power_cmd_data_ = power_msg;
     mutex_.unlock();
 }
 
@@ -51,20 +57,20 @@ Kilin::Kilin()
     NO_SWITCH_TIMEDOUT_ERROR_ = true;
 
     /* initialize robot state */
-    HALL_CALIBRATED_ = false;
+    fsm_.hall_calibrated = false;
     max_timeout_cnt_ = 100;
     
     powerboard_state_.push_back(digital_switch_);
     powerboard_state_.push_back(signal_switch_);
     powerboard_state_.push_back(power_switch_);
 
-    ModeFsm fsm(&modules_list_, &powerboard_state_, fpga_.powerboard_V_list_);
+    ModeFsm fsm(&hip_can_list_, &powerboard_state_, fpga_.powerboard_V_list_);
     fsm_ = fsm;
     fsm_.NO_CAN_TIMEDOUT_ERROR_ = &NO_CAN_TIMEDOUT_ERROR_;
     fsm_.NO_SWITCH_TIMEDOUT_ERROR_ = &NO_SWITCH_TIMEDOUT_ERROR_;
 
     load_config_();
-    console_.init(&fpga_, &modules_list_, &powerboard_state_, &fsm_, &main_mtx_);
+    console_.init(&fpga_, &hip_can_list_, &powerboard_state_, &fsm_, &main_mtx_);
 
     fpga_.setIrqPeriod(main_irq_period_us_, can_irq_period_us_);
 }
@@ -91,7 +97,7 @@ void Kilin::load_config_()
     {
         std::string label = yaml_node_["Modules_list"][i].as<std::string>();
         HipModule module(label, yaml_node_, fpga_.status_, fpga_.session_);
-        modules_list_.push_back(module);
+        hip_can_list_.push_back(module);
     }
 
     YAML::Node Factors_node_ = yaml_node_["Powerboard_Scaling_Factor"];
@@ -115,11 +121,11 @@ void Kilin::load_config_()
     }
 }
 
-void Kilin::interruptHandler(
-				core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
-				core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
-				core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
-				core::Publisher<motor_msg::MotorStateStamped>& state_pub_
+void Kilin::main_loop(
+				core::Subscriber<power_msg::PowerCmdStamped>& pb_cmd_sub_,
+				core::Publisher<power_msg::PowerStateStamped>& pb_state_sub_,
+				core::Subscriber<motor_msg::MotorCmdStamped>& motor_cmd_sub_,
+				core::Publisher<motor_msg::MotorStateStamped>& motor_state_pub_
 		)
 {
     while (NiFpga_IsNotError(fpga_.status_) && !sys_stop)
@@ -129,125 +135,134 @@ void Kilin::interruptHandler(
         NiFpga_Bool TimedOut = 0;
 
         // Wait on IRQ to ensure FPGA is ready
-        NiFpga_MergeStatus(&fpga_.status_, NiFpga_WaitOnIrqs(fpga_.session_, fpga_.irqContext_, NiFpga_Irq_0 | NiFpga_Irq_1,
-                                                             irqTimeout, &irqsAsserted, &TimedOut));
+        NiFpga_MergeStatus(
+						&fpga_.status_, 
+						NiFpga_WaitOnIrqs(
+							fpga_.session_, fpga_.irqContext_, 
+							NiFpga_Irq_0 | NiFpga_Irq_1, irqTimeout, 
+							&irqsAsserted, &TimedOut
+						)
+				);
 
-        if (NiFpga_IsError(fpga_.status_))
+        if (TimedOut) std::cout << red << "IRQ timedout" << reset << std::endl;
+				else if (NiFpga_IsError(fpga_.status_))
         {
-            std::cout << red << "[FPGA Server] Error! Exiting program. LabVIEW error code: " << fpga_.status_ << reset
-                      << std::endl;
+            std::cout << red << "[FPGA Server] Error! Exiting program. LabVIEW error code: " 
+											<< fpga_.status_ << reset << std::endl;
         }
-
-        uint32_t irq0_cnt;
-        uint32_t irq1_cnt;
-
-        if (TimedOut)
-        {
-            std::cout << red << "IRQ timedout" << ", IRQ_0 cnt: " << irq0_cnt << ", IRQ_1 cnt: " << irq1_cnt << reset
-                      << std::endl;
-        }
-
-        /* if an IRQ was asserted */
-        if (NiFpga_IsNotError(fpga_.status_) && !TimedOut)
+				else
         {
             if (irqsAsserted & NiFpga_Irq_0)
             {
-                mainLoop_(cmd_pb_sub_, state_pb_pub_, cmd_sub_, state_pub_);
-                // Acknowledge IRQ to begin DMA acquisition
-                NiFpga_MergeStatus(&fpga_.status_, NiFpga_AcknowledgeIrqs(fpga_.session_, irqsAsserted));
+                mainLoop_cb_(pb_cmd_sub_, pb_state_sub_, motor_cmd_sub_, motor_state_pub_);
+                NiFpga_MergeStatus(&fpga_.status_, NiFpga_AcknowledgeIrqs(fpga_.session_, irqsAsserted)); // clear irq
             }
             if (irqsAsserted & NiFpga_Irq_1)
             {
-                /* TODO: do something if IRQ1 */
-                /* Handling CAN-BUS communication */
-                canLoop_();
-
-                // Acknowledge IRQ to begin DMA acquisition
-                NiFpga_MergeStatus(&fpga_.status_, NiFpga_AcknowledgeIrqs(fpga_.session_, irqsAsserted));
+                canLoop_cb_();
+                NiFpga_MergeStatus(&fpga_.status_, NiFpga_AcknowledgeIrqs(fpga_.session_, irqsAsserted)); // clear irq
             }
         }
         usleep(10);
     }
 }
 
-void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
-                      core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
-                      core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
-                      core::Publisher<motor_msg::MotorStateStamped>& state_pub_)
+void Kilin::mainLoop_cb_(core::Subscriber<power_msg::PowerCmdStamped>& pb_cmd_sub_,
+                      core::Publisher<power_msg::PowerStateStamped>& pb_state_sub_,
+                      core::Subscriber<motor_msg::MotorCmdStamped>& motor_cmd_sub_,
+                      core::Publisher<motor_msg::MotorStateStamped>& motor_state_pub_)
 {
+		// powerboard
     fpga_.write_powerboard_(&powerboard_state_);
     fpga_.read_powerboard_data_();
 
+		// grpc
     core::spinOnce();
     mutex_.lock();
+
+    // get power board feedback message
     power_msg::PowerStateStamped power_fb_msg;
-    motor_msg::MotorStateStamped motor_fb_msg;
+    powerboardPack_(power_fb_msg);
 
-    fsm_.runFsm(motor_fb_msg, motor_cmd_data);
-    motor_message_updated = 0;    
-    HALL_CALIBRATED_ = fsm_.hall_calibrated;
+		// get motor feedback message from can
+    motor_msg::MotorStateStamped grpc_motor_fb_msg;
+    fsm_.runFsm(grpc_motor_fb_msg, grpc_motor_cmd_data_);
+    grpc_hip_motor_cmd_updated_ = false;    
 
-    mutex_.unlock();
-
-    // Communication with Node Architecture
-    powerboardPack(power_fb_msg);
-
-    // Read Command
-    mutex_.lock();
-    if (power_cmd_data.clean() == true)
+    // grpc Read Command
+    if (grpc_power_cmd_data_.clean() == true)
     {
         NO_CAN_TIMEDOUT_ERROR_ = true;
         NO_SWITCH_TIMEDOUT_ERROR_ = true;
-        HALL_CALIBRATED_ = false;
+        fsm_.hall_calibrated = false;
         timeout_cnt_ = 0;
     }
 
+		// send power board command from grpc to fpga
     if (NO_SWITCH_TIMEDOUT_ERROR_)
     {
-        if (fpga_message_updated)
+        if (grpc_power_cmd_updated_)
         {
-            powerboard_state_.at(0) = power_cmd_data.digital();
-            powerboard_state_.at(1) = power_cmd_data.signal();
-            powerboard_state_.at(2) = power_cmd_data.power();
+						// update power board command from grpc to class
+            powerboard_state_.at(0) = grpc_power_cmd_data_.digital();
+            powerboard_state_.at(1) = grpc_power_cmd_data_.signal();
+            powerboard_state_.at(2) = grpc_power_cmd_data_.power();
 
-            if (power_cmd_data.robot_mode() == (int)Mode::MOTOR && fsm_.workingMode_ != Mode::MOTOR)fsm_.switchMode(Mode::MOTOR);
-            else if (power_cmd_data.robot_mode() == (int)Mode::HALL_CALIBRATE && fsm_.workingMode_ != Mode::HALL_CALIBRATE && fsm_.workingMode_ != Mode::MOTOR)fsm_.switchMode(Mode::HALL_CALIBRATE);
-            else if (power_cmd_data.robot_mode() == (int)Mode::SET_ZERO && fsm_.workingMode_ != Mode::SET_ZERO)fsm_.switchMode(Mode::SET_ZERO);
-            else if (power_cmd_data.robot_mode() == (int)Mode::CONFIG && fsm_.workingMode_ != Mode::CONFIG)fsm_.switchMode(Mode::CONFIG);
-            else if (power_cmd_data.robot_mode() == (int)Mode::REST && fsm_.workingMode_ != Mode::REST)fsm_.switchMode(Mode::REST);
-            fpga_message_updated = 0;
+						// update power board cmd from class to fpga
+            if (grpc_power_cmd_data_.robot_mode() == (int)Mode::MOTOR && fsm_.workingMode_ != Mode::MOTOR)fsm_.switchMode(Mode::MOTOR);
+            else if (grpc_power_cmd_data_.robot_mode() == (int)Mode::HALL_CALIBRATE && fsm_.workingMode_ != Mode::HALL_CALIBRATE && fsm_.workingMode_ != Mode::MOTOR)fsm_.switchMode(Mode::HALL_CALIBRATE);
+            else if (grpc_power_cmd_data_.robot_mode() == (int)Mode::SET_ZERO && fsm_.workingMode_ != Mode::SET_ZERO)fsm_.switchMode(Mode::SET_ZERO);
+            else if (grpc_power_cmd_data_.robot_mode() == (int)Mode::CONFIG && fsm_.workingMode_ != Mode::CONFIG)fsm_.switchMode(Mode::CONFIG);
+            else if (grpc_power_cmd_data_.robot_mode() == (int)Mode::REST && fsm_.workingMode_ != Mode::REST)fsm_.switchMode(Mode::REST);
+            grpc_power_cmd_updated_ = 0;
         }
     }
-    motor_fb_msg.mutable_header()->set_seq(seq);
+    grpc_motor_fb_msg.mutable_header()->set_seq(seq);
     mutex_.unlock();
-    state_pub_.publish(motor_fb_msg);
-    state_pb_pub_.publish(power_fb_msg);
+
+		// publish motor and power feedback message to grpc
+    motor_state_pub_.publish(grpc_motor_fb_msg);
+    pb_state_sub_.publish(power_fb_msg);
 }
 
-void Kilin::canLoop_()
+void Kilin::canLoop_cb_()
 {
     for (int i = 0; i < 4; i++)
     {
-        if (modules_list_[i].enable_ && powerboard_state_.at(2) == true)
+        if (hip_can_list_[i].enable_ && powerboard_state_.at(2) == true)
         {
-            modules_list_[i].io_.CAN_recieve_feedback(&modules_list_[i].rxdata_buffer_[0], &modules_list_[i].rxdata_buffer_[1]);
-            modules_list_[i].CAN_timeoutCheck();
+            hip_can_list_[i].io_.CAN_recieve_feedback(&hip_can_list_[i].rxdata_buffer_[0], &hip_can_list_[i].rxdata_buffer_[1]);
+            hip_can_list_[i].CAN_timeoutCheck();
 
-            if (modules_list_[i].CAN_module_timedout)timeout_cnt_++;
+            if (hip_can_list_[i].CAN_module_timedout)timeout_cnt_++;
             else timeout_cnt_ = 0;
             if (timeout_cnt_ < max_timeout_cnt_)
             {
-                modules_list_[i].io_.CAN_send_command(modules_list_[i].txdata_buffer_[0], modules_list_[i].txdata_buffer_[1]);
+                hip_can_list_[i].io_.CAN_send_command(hip_can_list_[i].txdata_buffer_[0], hip_can_list_[i].txdata_buffer_[1]);
                 NO_CAN_TIMEDOUT_ERROR_ = true;
             }
             else NO_CAN_TIMEDOUT_ERROR_ = false;
         }
     }
+
+		// test RS485
+		/* NiFpga_FPGA_RS485_v1_2_ControlArrayU8 r_tx_buf_id1_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8_RS485_TX_Data1; */
+		/* NiFpga_FPGA_RS485_v1_2_ControlArrayU8Size r_tx_buf_size_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8Size_RS485_TX_Data1; */
+		/* NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8 r_rx_buf_id1_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Buf1; */
+		/* NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size r_rx_buf_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Data1; */
+		/* NiFpga_Bool transmit_value = true; */
+		/* uint8_t RS485_test_tx_arr1[19]; */
+		/* uint8_t RS485_test_rx_arr1[27]; */
+		/* NiFpga_FPGA_RS485_v1_2_ControlBool r_RS485_transmit_; */
+
+		/* NiFpga_WriteArrayU8(fpga_.session_, r_tx_buf_id1_, &RS485_test_tx_arr1, r_tx_buf_size_); */
+		/* NiFpga_WriteBool(fpga_.session_, r_RS485_transmit_, transmit_value); */
+		/* NiFpga_ReadArrayU8(fpga_.session_, r_rx_buf_id1_, &RS485_test_rx_arr1, r_rx_buf_size_); */
+
 }
 
-void Kilin::powerboardPack(power_msg::PowerStateStamped&power_dashboard_reply)
+void Kilin::powerboardPack_(power_msg::PowerStateStamped&power_dashboard_reply)
 {   
-    
     mutex_.lock();
     gettimeofday(&t_stamp, NULL);
     power_dashboard_reply.mutable_header()->set_seq(seq);
@@ -314,17 +329,17 @@ int main(int argc, char* argv[])
     Kilin kilin;
     
     /* gRPC Topic */
-    core::NodeHandler nh;
 
-    core::Publisher<power_msg::PowerStateStamped>& power_pub = nh.advertise<power_msg::PowerStateStamped>("power/state");
-    core::Subscriber<power_msg::PowerCmdStamped>& power_sub = nh.subscribe<power_msg::PowerCmdStamped>("power/command", 1000, power_data_cb);
+    core::Publisher<power_msg::PowerStateStamped>& power_pub = kilin.nh.advertise<power_msg::PowerStateStamped>("power/state");
+    core::Subscriber<power_msg::PowerCmdStamped>& power_sub = kilin.nh.subscribe<power_msg::PowerCmdStamped>("power/command", 1000, kilin.grpc_power_sub_cb);
 
-    core::Publisher<motor_msg::MotorStateStamped>& motor_pub = nh.advertise<motor_msg::MotorStateStamped>("motor/state");
-    core::Subscriber<motor_msg::MotorCmdStamped>& motor_sub = nh.subscribe<motor_msg::MotorCmdStamped>("motor/command", 1000, motor_data_cb);
+    core::Publisher<motor_msg::MotorStateStamped>& motor_pub = kilin.nh.advertise<motor_msg::MotorStateStamped>("motor/state");
+    core::Subscriber<motor_msg::MotorCmdStamped>& motor_sub = kilin.nh.subscribe<motor_msg::MotorCmdStamped>("motor/command", 1000, kilin.grpc_motor_sub_cb);
 
-    kilin.interruptHandler(power_sub, power_pub, motor_sub, motor_pub);
+    kilin.main_loop(power_sub, power_pub, motor_sub, motor_pub);
 
-    if (NiFpga_IsError(kilin.fpga_.status_)) std::cout << red << "[FPGA Server] Error! Exiting program. LabVIEW error code: " << kilin.fpga_.status_ << reset << std::endl;
+		// error handle, exit when error
+    if (NiFpga_IsError(kilin.get_fpga_status())) std::cout << red << "[FPGA Server] Error! Exiting program. LabVIEW error code: " << kilin.get_fpga_status() << reset << std::endl;
     else
     {
         endwin();

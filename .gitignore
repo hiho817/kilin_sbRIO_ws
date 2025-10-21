@@ -6,6 +6,7 @@ third_party/grpc/
 TEST/
 *.swp
 *.swo
+*.swn
 *.un~
 *.cpp~
 *.hpp~

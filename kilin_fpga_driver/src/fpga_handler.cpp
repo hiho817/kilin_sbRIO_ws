@@ -71,7 +71,6 @@ ModuleIO::ModuleIO(NiFpga_Status _status, NiFpga_Session _fpga_session, std::str
     }
 }
 
-
 // Write FPGA status
 void ModuleIO::write_CAN_id_(uint32_t id1, uint32_t id2)
 {
