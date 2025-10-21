@@ -11,11 +11,11 @@
 #include "msg.hpp"
 #include "fpga_handler.hpp"
 
-class LegModule
+class HipModule
 {
 public:
-  LegModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
-  LegModule(){
+  HipModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
+  HipModule(){
   }
 
   // ID of Module (F,H)
@@ -45,5 +45,9 @@ public:
   void load_config();
   void CAN_timeoutCheck();
 };
+
+double deg2rad(double deg);
+Eigen::Vector2d tb2phi(const Eigen::Vector2d &tb);
+Eigen::Vector2d phi2tb(const Eigen::Vector2d &phi);
 
 #endif

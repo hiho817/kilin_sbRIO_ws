@@ -90,7 +90,7 @@ void Kilin::load_config_()
     for (int i = 0; i < modules_num_; i++)
     {
         std::string label = yaml_node_["Modules_list"][i].as<std::string>();
-        LegModule module(label, yaml_node_, fpga_.status_, fpga_.session_);
+        HipModule module(label, yaml_node_, fpga_.status_, fpga_.session_);
         modules_list_.push_back(module);
     }
 
@@ -115,10 +115,12 @@ void Kilin::load_config_()
     }
 }
 
-void Kilin::interruptHandler(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
-    core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
-    core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
-    core::Publisher<motor_msg::MotorStateStamped>& state_pub_)
+void Kilin::interruptHandler(
+				core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
+				core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
+				core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
+				core::Publisher<motor_msg::MotorStateStamped>& state_pub_
+		)
 {
     while (NiFpga_IsNotError(fpga_.status_) && !sys_stop)
     {

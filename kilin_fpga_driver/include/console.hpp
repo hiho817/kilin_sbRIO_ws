@@ -5,7 +5,7 @@
 #define CYAN_PAIR 2
 #define NCURSES_NOMACROS
 
-#include "leg_module.hpp"
+#include "hip_module.hpp"
 #include "fsm.hpp"
 
 #include <iostream>
@@ -25,7 +25,7 @@ using namespace std;
 class Panel
 {
 public:
-  Panel(string title, string type, LegModule *lm_, int org_x, int org_y, int height_, int width_, bool box_on);
+  Panel(string title, string type, HipModule *lm_, int org_x, int org_y, int height_, int width_, bool box_on);
   Panel()
   {
   }
@@ -42,7 +42,7 @@ public:
   int width_;
   bool box_on_;
 
-  LegModule *md_ptr_;
+  HipModule *md_ptr_;
   std::mutex *main_mtx_;
   std::vector<bool> *powerboard_state_;
   ModeFsm *fsm_;
@@ -62,7 +62,7 @@ public:
   {
   }
 
-  void init(vector<LegModule> *mods_, bool *if_resetPanel, int term_max_x, int term_max_y);
+  void init(vector<HipModule> *mods_, bool *if_resetPanel, int term_max_x, int term_max_y);
 
   void inputHandler(WINDOW *win_, std::mutex &input_mutex);
   void reset_input_window(WINDOW *win);
@@ -73,8 +73,8 @@ public:
   WINDOW *win_;
   std::mutex mutex_;
 
-  LegModule *modL_ptr_;
-  LegModule *modR_ptr_;
+  HipModule *modL_ptr_;
+  HipModule *modR_ptr_;
 
   bool *if_resetPanel;
   std::mutex *main_mtx_;
@@ -92,7 +92,7 @@ public:
   {
   }
 
-  void init(FpgaHandler *fpga_, vector<LegModule> *mods_, std::vector<bool> *pb_state_, ModeFsm *fsm_, std::mutex *mtx_);
+  void init(FpgaHandler *fpga_, vector<HipModule> *mods_, std::vector<bool> *pb_state_, ModeFsm *fsm_, std::mutex *mtx_);
   void refreshWindow();
 
   int term_max_x_;
@@ -111,8 +111,8 @@ public:
   Panel p_control_;
   InputPanel input_panel_;
 
-  LegModule *modL_ptr_;
-  LegModule *modR_ptr_;
+  HipModule *modL_ptr_;
+  HipModule *modR_ptr_;
 
   std::mutex *main_mtx_;
   std::vector<bool> *powerboard_state_;

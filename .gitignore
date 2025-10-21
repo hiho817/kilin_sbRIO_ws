@@ -4,3 +4,11 @@ log/
 install/
 third_party/grpc/
 TEST/
+*.swp
+*.swo
+*.un~
+*.cpp~
+*.hpp~
+*.yaml~
+*.txt~
+*.gitignore~

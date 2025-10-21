@@ -2,7 +2,7 @@
 #define FPGA_SERVER_HPP
 
 #include "fpga_handler.hpp"
-#include "leg_module.hpp"
+#include "hip_module.hpp"
 #include "console.hpp"
 #include "fsm.hpp"
 
@@ -50,7 +50,7 @@ class Kilin{
         bool NO_CAN_TIMEDOUT_ERROR_;
 
         /* robot state */
-        std::vector<LegModule> modules_list_;
+        std::vector<HipModule> modules_list_;
         ModeFsm fsm_;
         bool HALL_CALIBRATED_;
         int modules_num_;
@@ -59,14 +59,16 @@ class Kilin{
 
         void load_config_();
 
-        void interruptHandler(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
+        void interruptHandler(
+						core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
             core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
             core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
             core::Publisher<motor_msg::MotorStateStamped>& state_pub_);
 
         void powerboardPack(power_msg::PowerStateStamped &power_fb_msg);
         
-        void mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
+        void mainLoop_(
+						core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
             core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
             core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
             core::Publisher<motor_msg::MotorStateStamped>& state_pub_);

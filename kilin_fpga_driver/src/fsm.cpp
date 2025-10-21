@@ -1,6 +1,6 @@
 #include <fsm.hpp>
 
-ModeFsm::ModeFsm(std::vector<LegModule>* _modules, std::vector<bool>* _pb_state, double* pb_v)
+ModeFsm::ModeFsm(std::vector<HipModule>* _modules, std::vector<bool>* _pb_state, double* pb_v)
 {
     workingMode_ = Mode::REST;
     prev_workingMode_ = Mode::REST;
@@ -225,7 +225,8 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg, const motor_msg
                             /*********************************************/
                             case 0:
                             {   
-                                mod.txdata_buffer_[0].position_ = motor_cmd_msg.module_a().hip().position();
+				// std::cout<< "motor_a_position_msg: " << motor_cmd_msg.module_a().hip().position() << std::endl;
+				mod.txdata_buffer_[0].position_ = motor_cmd_msg.module_a().hip().position();
                                 mod.txdata_buffer_[0].torque_ = motor_cmd_msg.module_a().hip().torque();
                                 mod.txdata_buffer_[0].KP_ = motor_cmd_msg.module_a().hip().kp();
                                 mod.txdata_buffer_[0].KI_ = motor_cmd_msg.module_a().hip().ki();
