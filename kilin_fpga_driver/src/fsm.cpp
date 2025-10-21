@@ -52,8 +52,8 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg, const motor_msg
                 {
                     if (modules_list_->at(i).enable_)
                     {
-                        modules_list_->at(i).io_.motor_F_bias = 0;
-                        modules_list_->at(i).io_.motor_H_bias = 0;
+                        modules_list_->at(i).io_.set_motor_F_bias(0);
+                        modules_list_->at(i).io_.set_motor_H_bias(0);
                     }
                 }
 
@@ -128,8 +128,8 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg, const motor_msg
                             modules_list_->at(i).CAN_tx_timedout_[0] = false;
                             modules_list_->at(i).CAN_tx_timedout_[1] = false;
 
-                            modules_list_->at(i).io_.motor_F_bias = modules_list_->at(i).Motor_F_bias;
-                            modules_list_->at(i).io_.motor_H_bias = modules_list_->at(i).Motor_H_bias;
+                            modules_list_->at(i).io_.set_motor_F_bias(modules_list_->at(i).Motor_F_bias);
+                            modules_list_->at(i).io_.set_motor_H_bias(modules_list_->at(i).Motor_H_bias);
 
                             cal_command[i][0] = - modules_list_->at(i).Motor_F_bias;
                             modules_list_->at(i).txdata_buffer_[0].position_ = - modules_list_->at(i).Motor_F_bias;
@@ -165,7 +165,7 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg, const motor_msg
                                 }
                                 else
                                 {
-                                    modules_list_->at(i).io_.write_CAN_id_fc_((int)Mode::CONTROL, (int)Mode::CONTROL);
+                                    modules_list_->at(i).io_.set_ni_CAN_id_fc((int)Mode::CONTROL, (int)Mode::CONTROL);
                                     cal_command[i][j] += cal_dir_[i][j] * cal_vel_ * dt_;
                                     modules_list_->at(i).txdata_buffer_[j].position_ = cal_command[i][j];
                                     modules_list_->at(i).txdata_buffer_[j].torque_ = 0;
@@ -306,8 +306,8 @@ bool ModeFsm::switchMode(Mode next_mode)
         {
             if (modules_list_->at(i).enable_)
             {
-                modules_list_->at(i).io_.write_CAN_id_fc_((int)next_mode_switch, (int)next_mode_switch);
-                modules_list_->at(i).io_.write_CAN_transmit_(1);
+                modules_list_->at(i).io_.set_ni_CAN_id_fc((int)next_mode_switch, (int)next_mode_switch);
+                modules_list_->at(i).io_.set_ni_CAN_transmit(true);
                 modules_list_->at(i).io_.CAN_recieve_feedback(&modules_list_->at(i).rxdata_buffer_[0],
                                                               &modules_list_->at(i).rxdata_buffer_[1]);
                 if ((next_mode_switch == Mode::SET_ZERO
@@ -329,8 +329,8 @@ bool ModeFsm::switchMode(Mode next_mode)
     for (int i = 0; i < 2; i++)
     {
         if (modules_list_->at(i).enable_){
-            if (workingMode_ == Mode::MOTOR) modules_list_->at(i).io_.write_CAN_id_fc_((int)Mode::CONTROL, (int)Mode::CONTROL);
-            else modules_list_->at(i).io_.write_CAN_id_fc_((int)Mode::CONFIG, (int)Mode::CONFIG);
+            if (workingMode_ == Mode::MOTOR) modules_list_->at(i).io_.set_ni_CAN_id_fc((int)Mode::CONTROL, (int)Mode::CONTROL);
+            else modules_list_->at(i).io_.set_ni_CAN_id_fc((int)Mode::CONFIG, (int)Mode::CONFIG);
         }
     }
 

@@ -157,3 +157,12 @@ The motor module parameter update functionality has been deprecated. Instead, us
 - `Command Send !` – Command executed successfully
 - `Syntax Error !` – Invalid command format
 - `Switch Mode Timeout !` – FSM mode transition timed out
+
+
+## coding guideline
+should use public and private. put params in private and access them through public functions.
+Trailing Underscore for private params.
+hope to add doxygen document comments in hpp.
+don't capitalize first word of variables and function params, use snake_case instead of cammelCase.
+use PascalCase for class and struct.
+don't add tail underscore to function input parameters

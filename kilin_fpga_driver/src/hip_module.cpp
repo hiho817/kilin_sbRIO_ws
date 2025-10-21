@@ -1,10 +1,10 @@
 #include <hip_module.hpp>
 
-HipModule::HipModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session)
+HipModule::HipModule(std::string label, YAML::Node config, NiFpga_Status _status, NiFpga_Session _fpga_session) :
+    label_(label),
+    config_(config),
+    enable_(false)
 {
-    label_ = _label;
-    config_ = _config;
-    enable_ = false;
 
     load_config();
 
@@ -50,7 +50,7 @@ HipModule::HipModule(std::string _label, YAML::Node _config, NiFpga_Status _stat
     rxdata_buffer_[1].CAN_id_ = 0;
     rxdata_buffer_[1].version_ = 0;
 
-    io_ = ModuleIO(_status, _fpga_session, CAN_port_, &motors_list_);
+    io_ = ModuleIO_CAN(_status, _fpga_session, CAN_port_, &motors_list_);
     CAN_first_transmit_ = true;
 
     /* setup motors' CAN ID, port selection and timeout_us */
@@ -122,8 +122,8 @@ void HipModule::load_config()
 
 void HipModule::CAN_timeoutCheck()
 {
-    CAN_rx_timedout_[0] = io_.read_rx_timeout_();
-    CAN_tx_timedout_[0] = io_.read_tx_timeout_();
+    CAN_rx_timedout_[0] = io_.get_ni_rx_timeout();
+    CAN_tx_timedout_[0] = io_.get_ni_tx_timeout();
 
     CAN_mtr_timedout[0] = CAN_rx_timedout_[0] || CAN_tx_timedout_[0];
     CAN_mtr_timedout[1] = CAN_rx_timedout_[1] || CAN_tx_timedout_[1];

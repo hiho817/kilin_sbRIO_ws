@@ -24,7 +24,7 @@ public:
   std::vector<Motor> motors_list_;
 
   // hardware configuration
-  ModuleIO io_;
+  ModuleIO_CAN io_;
   std::string CAN_port_;
   bool enable_;
   int CAN_timeout_us;
@@ -41,7 +41,7 @@ public:
   double Motor_F_bias = 0;
   double Motor_H_bias = 0;
 
-  // ModuleIO
+  // ModuleIO_CAN
   void load_config();
   void CAN_timeoutCheck();
 };

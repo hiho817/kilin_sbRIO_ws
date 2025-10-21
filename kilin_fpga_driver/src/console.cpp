@@ -486,7 +486,7 @@ void Panel::infoDisplay() // type = module
     wrefresh(win_);
 }
 
-void Panel::infoDisplay(FpgaHandler *fpga_, bool digital_switch, bool signal_switch, bool power_switch) // type = power
+void Panel::infoDisplay(FpgaHandler *fpga, bool digital_switch, bool signal_switch, bool power_switch) // type = power
 {
     mvwprintw(win_, 2, 1, "HARDWARE POWER SWITCH ----------------");
     mvwprintw(win_, 3, 1, "[D] Digital:   %4d", digital_switch);
@@ -494,18 +494,18 @@ void Panel::infoDisplay(FpgaHandler *fpga_, bool digital_switch, bool signal_swi
     mvwprintw(win_, 5, 1, "[P] Power:     %4d", power_switch);
 
     mvwprintw(win_, 6, 1, "Voltage Current ADC ------------------");
-    mvwprintw(win_, 7, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[0], fpga_->powerboard_I_list_[0]);
-    mvwprintw(win_, 8, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[1], fpga_->powerboard_I_list_[1]);
-    mvwprintw(win_, 9, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[2], fpga_->powerboard_I_list_[2]);
-    mvwprintw(win_, 10, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[3], fpga_->powerboard_I_list_[3]);
-    mvwprintw(win_, 11, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[4], fpga_->powerboard_I_list_[4]);
-    mvwprintw(win_, 12, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[5], fpga_->powerboard_I_list_[5]);
-    mvwprintw(win_, 13, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[6], fpga_->powerboard_I_list_[6]);
-    mvwprintw(win_, 14, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[7], fpga_->powerboard_I_list_[7]);
-    mvwprintw(win_, 15, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[8], fpga_->powerboard_I_list_[8]);
-    mvwprintw(win_, 16, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[9], fpga_->powerboard_I_list_[9]);
-    mvwprintw(win_, 17, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[10], fpga_->powerboard_I_list_[10]);
-    mvwprintw(win_, 18, 1, "Voltage: %5.5f, Current: %5.5f", fpga_->powerboard_V_list_[11], fpga_->powerboard_I_list_[11]);
+    mvwprintw(win_, 7, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[0], fpga->pwrb_I_buf[0]);
+    mvwprintw(win_, 8, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[1], fpga->pwrb_I_buf[1]);
+    mvwprintw(win_, 9, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[2], fpga->pwrb_I_buf[2]);
+    mvwprintw(win_, 10, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[3], fpga->pwrb_I_buf[3]);
+    mvwprintw(win_, 11, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[4], fpga->pwrb_I_buf[4]);
+    mvwprintw(win_, 12, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[5], fpga->pwrb_I_buf[5]);
+    mvwprintw(win_, 13, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[6], fpga->pwrb_I_buf[6]);
+    mvwprintw(win_, 14, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[7], fpga->pwrb_I_buf[7]);
+    mvwprintw(win_, 15, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[8], fpga->pwrb_I_buf[8]);
+    mvwprintw(win_, 16, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[9], fpga->pwrb_I_buf[9]);
+    mvwprintw(win_, 17, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[10], fpga->pwrb_I_buf[10]);
+    mvwprintw(win_, 18, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_V_buf[11], fpga->pwrb_I_buf[11]);
 
     wrefresh(win_);
 }

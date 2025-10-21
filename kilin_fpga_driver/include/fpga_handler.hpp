@@ -20,17 +20,43 @@
 #include <string>
 #undef OK
 
-class ModuleIO{
-public:
-    ModuleIO(NiFpga_Status status_, NiFpga_Session fpga_session_, std::string CAN_port_,
+class ModuleIO_CAN{
+  public:
+    ModuleIO_CAN(NiFpga_Status status_, NiFpga_Session fpga_session_, std::string CAN_port_,
         std::vector<Motor> *motors_list);
 
-    ModuleIO(){};
+    ModuleIO_CAN(){};
 
-    NiFpga_Status status_;
-    NiFpga_Session fpga_session_;
-    std::vector<Motor> *motors_list_;
+    NiFpga_Status get_fpga_status(){ return status_ ; };
+    
+    // read write function
+    void set_ni_CAN_transmit(NiFpga_Bool value);
+    void set_ni_CAN_id(uint32_t id1, uint32_t id2);
+    void set_ni_port_select(const NiFpga_Bool *array);  
+    void set_ni_CAN_id_fc(uint32_t id1_fc, uint32_t id2_fc);
+    
+    void get_ni_CAN_id_fc(uint32_t *fc1, uint32_t *fc2);
+    void get_ni_rx_data(uint8_t *rx_arr1, uint8_t *rx_arr2);
 
+    NiFpga_Bool get_ni_CAN_complete();
+    NiFpga_Bool get_ni_CAN_success();
+    int16_t get_ni_CAN_complete_counter();
+
+    NiFpga_Bool get_ni_tx_timeout();
+    NiFpga_Bool get_ni_rx_timeout();
+
+    void CAN_setup(int timeout_us);
+    void CAN_set_mode(Mode mode);
+    void CAN_send_command(CAN_txdata txdata_id1, CAN_txdata txdata_id2);
+    void CAN_recieve_feedback(CAN_rxdata *rxdata_id1, CAN_rxdata *rxdata_id2);
+
+    // motor bias getters and setters
+    double get_motor_F_bias(){ return motor_F_bias_; }
+    double get_motor_H_bias(){ return motor_H_bias_; }
+    void set_motor_F_bias(double bias){ motor_F_bias_ = bias; }
+    void set_motor_H_bias(double bias){ motor_H_bias_ = bias; }
+
+  private:
     int CAN_timeout_us_;
 
     NiFpga_FPGA_RS485_v1_2_ControlU32 r_CAN_id1_;
@@ -60,70 +86,58 @@ public:
     NiFpga_FPGA_RS485_v1_2_IndicatorBool r_rx_timeout_;
     NiFpga_FPGA_RS485_v1_2_ControlU32 r_timeout_us_;
 
-    // read write function
-    void write_CAN_transmit_(NiFpga_Bool value);
-    void write_CAN_id_(uint32_t id1, uint32_t id2);
-    void write_port_select_(const NiFpga_Bool *array);  
-    void write_CAN_id_fc_(uint32_t id1_fc, uint32_t id2_fc);
-    void write_tx_data_(const uint8_t *tx_arr1, const uint8_t *tx_arr2);
-    
-    void read_CAN_id_fc_(uint32_t *fc1, uint32_t *fc2);
-    void read_rx_data_(uint8_t *rx_arr1, uint8_t *rx_arr2);
+    double motor_F_bias_;
+    double motor_H_bias_;
 
-    NiFpga_Bool read_CAN_complete_();
-    NiFpga_Bool read_CAN_success_();
-    int16_t read_CAN_complete_counter_();
-
-    void write_timeout_us_(uint32_t value);
-    NiFpga_Bool read_tx_timeout_();
-    NiFpga_Bool read_rx_timeout_();
-
-    void CAN_setup(int timeout_us);
-    void CAN_set_mode(Mode mode);
-    void CAN_send_command(CAN_txdata txdata_id1, CAN_txdata txdata_id2);
-    void CAN_recieve_feedback(CAN_rxdata *rxdata_id1, CAN_rxdata *rxdata_id2);
-
-    void CAN_encode(uint8_t (&txmsg)[8], CAN_txdata txdata);
-    void CAN_decode(uint8_t (&rxmsg)[8], CAN_rxdata *rxdata);
-
-    double motor_F_bias;
-    double motor_H_bias;
-
+    void CAN_encode_(uint8_t (&txmsg)[8], CAN_txdata txdata);
+    void CAN_decode_(uint8_t (&rxmsg)[8], CAN_rxdata *rxdata);
     // data conversion for CAN-bus
-    int float_to_uint(float x, float x_min, float x_max, int bits);
-    float uint_to_float(int x_int, float x_min, float x_max, int bits);
+    int float_to_uint_(float x, float x_min, float x_max, int bits);
+    float uint_to_float_(int x_int, float x_min, float x_max, int bits);
+    void set_ni_tx_data_(const uint8_t *tx_arr1, const uint8_t *tx_arr2);
+    void set_ni_timeout_us_(uint32_t value);
+    NiFpga_Status set_fpga_status(const NiFpga_Status newStatus) { return NiFpga_MergeStatus(&status_, newStatus); };
+
+    NiFpga_Status status_;
+    NiFpga_Session fpga_session_;
+    std::vector<Motor> *motors_list_;
+
 };
 
-class FpgaHandler
-{
-public:
-  FpgaHandler();
-  ~FpgaHandler();
+class FpgaHandler{
+  public:
+    FpgaHandler();
+    ~FpgaHandler();
 
-  NiFpga_Session session_;
-  NiFpga_Status status_;
-  // Fpga interrupt request
-  NiFpga_IrqContext irqContext_;
+    NiFpga_Session session;
+    NiFpga_IrqContext irqContext;
 
-  // powerboard
-  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_digital_;
-  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_signal_;
-  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_power_;
+    NiFpga_Status get_fpga_status(){ return status_ ; };
+    NiFpga_Status set_fpga_status(const NiFpga_Status newStatus) { return NiFpga_MergeStatus(&status_, newStatus); };
 
-  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16 r_powerboard_data_;
-  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size size_powerboard_data_;
+    void set_ni_irq_period(int main_loop_period, int can_loop_period);
+    void set_ni_pwrb(std::vector<bool> *powerboard_state_);
+    void get_ni_pwrb_to_buf();
 
-  void setIrqPeriod(int main_loop_period, int can_loop_period);
-  void write_powerboard_(std::vector<bool> *powerboard_state_);
-  void read_powerboard_data_();
+    double powerboard_Ifactor[12];
+    double powerboard_Ioffset[12];
+    double powerboard_Vfactor[12];
+    double powerboard_Voffset[12];
 
-  double powerboard_Ifactor[12];
-  double powerboard_Ioffset[12];
-  double powerboard_Vfactor[12];
-  double powerboard_Voffset[12];
+    double pwrb_I_buf[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    double pwrb_V_buf[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-  double powerboard_I_list_[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  double powerboard_V_list_[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  private:
+    NiFpga_Status status_;
+    // Fpga interrupt request
+
+    // powerboard
+    NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_digital_;
+    NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_signal_;
+    NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_power_;
+
+    NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16 r_powerboard_data_;
+    NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size size_powerboard_data_;
 };
 
 #endif

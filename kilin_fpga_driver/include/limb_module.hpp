@@ -41,7 +41,7 @@ public:
   double Motor_F_bias = 0;
   double Motor_H_bias = 0;
 
-  // ModuleIO
+  // ModuleIO_CAN
   void load_config();
   void RS485_timeoutCheck();
 
