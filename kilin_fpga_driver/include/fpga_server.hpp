@@ -76,10 +76,10 @@ class Kilin{
     void load_config_();
 
     void mainLoop_cb_(
-        core::Subscriber<power_msg::PowerCmdStamped>& pb_cmd_sub_,
-        core::Publisher<power_msg::PowerStateStamped>& pb_state_sub_,
-        core::Subscriber<motor_msg::MotorCmdStamped>& motor_cmd_sub_,
-        core::Publisher<motor_msg::MotorStateStamped>& motor_state_pub_
+      core::Subscriber<power_msg::PowerCmdStamped>& pb_cmd_sub_,
+      core::Publisher<power_msg::PowerStateStamped>& pb_state_sub_,
+      core::Subscriber<motor_msg::MotorCmdStamped>& motor_cmd_sub_,
+      core::Publisher<motor_msg::MotorStateStamped>& motor_state_pub_
     );
     
     void canLoop_cb_();

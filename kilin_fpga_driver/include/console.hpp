@@ -80,9 +80,10 @@ public:
   std::mutex *main_mtx_;
   std::vector<bool> *powerboard_state_;
   ModeFsm *fsm_;
-
+  bool get_error_flag() const { return error_flag_; }
 private:
   std::thread *thread;
+  bool error_flag_;
 };
 
 class Console
@@ -123,6 +124,10 @@ public:
   int frontend_rate_;
 
   bool if_resetPanel;
+  bool get_error_flag() const { return error_flag_ && input_panel_.get_error_flag(); }
+
+  private:
+    bool error_flag_;
 };
 
 #endif
