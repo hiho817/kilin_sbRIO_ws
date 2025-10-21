@@ -3,6 +3,15 @@ build/
 build_stable_*
 log/
 install/
+*.swp
+*.swo
+*.swn
+*.un~
+*.cpp~
+*.hpp~
+*.yaml~
+*.txt~
+*.gitignore~
 third_party/grpc/
 TEST/
 *.swp
