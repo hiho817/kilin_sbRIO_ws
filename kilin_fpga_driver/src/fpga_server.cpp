@@ -61,43 +61,45 @@ Kilin::Kilin() {
 }
 
 void Kilin::load_config_() {
+
+  // Load YAML config file
   yaml_node_ = YAML::LoadFile(CONFIG_PATH);
 
+  // load FSM parameters
   fsm_.dt_ = yaml_node_["MainLoop_period_us"].as<int>() * 0.000001;  // sec
   fsm_.measure_offset = yaml_node_["Measure_offset"].as<int>();
   fsm_.cal_vel_ = yaml_node_["Hall_calibration_vel"].as<double>();
   fsm_.cal_tol_ = yaml_node_["Hall_calibration_tol"].as<double>();
 
+  // load scenario
   if (yaml_node_["Scenario"].as<std::string>().compare("SingleModule") == 0)
     fsm_.scenario_ = Scenario::SINGLE_MODULE;
   else
     fsm_.scenario_ = Scenario::ROBOT;
 
+  // load interrupt periods
   main_irq_period_us_ = yaml_node_["MainLoop_period_us"].as<int>();
   can_irq_period_us_ = yaml_node_["CANLoop_period_us"].as<int>();
 
-  /* initialize leg modules */
+  /* initialize hip modules */
   modules_num_ = yaml_node_["Number_of_modules"].as<int>();
-
   for (int i = 0; i < modules_num_; i++) {
     std::string label = yaml_node_["Modules_list"][i].as<std::string>();
     HipModule module(label, yaml_node_, fpga_.get_fpga_status(), fpga_.session);
     modules_list_.push_back(module);
   }
 
-  YAML::Node Factors_node_ = yaml_node_["Powerboard_Scaling_Factor"];
-  int idx_ = 0;
 
+  // initialize powerboard calibration parameters
+  YAML::Node factors_node = yaml_node_["Powerboard_Scaling_Factor"];
   std::cout << "PowerBoard Scaling Factor" << std::endl;
-  for (auto f : Factors_node_) {
-    fpga_.powerboard_Ifactor[idx_] = f["Current_Factor"].as<double>();
-    fpga_.powerboard_Ioffset[idx_] = f["Current_Offset"].as<double>();
-    fpga_.powerboard_Vfactor[idx_] = f["Voltage_Factor"].as<double>();
-    fpga_.powerboard_Voffset[idx_] = f["Voltage_Offset"].as<double>();
-    std::cout << "Index " << idx_ << " Current Factor: " << fpga_.powerboard_Ifactor[idx_]
-              << ", Current Offset: " << fpga_.powerboard_Ioffset[idx_] << std::endl
-              << " Voltage Factor: " << fpga_.powerboard_Vfactor[idx_]
-              << ", Voltage Offset: " << fpga_.powerboard_Voffset[idx_] << std::endl;
+  fpga_.loadCalibrationParameters(factors_node);
+  int idx_ = 0;
+  for (auto f : factors_node) {
+    std::cout << "Index " << idx_ << " Current Factor: " << fpga_.get_i_factor(idx_)
+              << ", Current Offset: " << fpga_.get_i_offset(idx_) << std::endl
+              << " Voltage Factor: " << fpga_.get_v_factor(idx_)
+              << ", Voltage Offset: " << fpga_.get_v_offset(idx_) << std::endl;
     idx_++;
   }
 }

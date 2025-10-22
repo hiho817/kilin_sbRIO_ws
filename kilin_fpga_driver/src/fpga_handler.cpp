@@ -286,8 +286,8 @@ FpgaHandler::~FpgaHandler() {
 void FpgaHandler::set_ni_irq_period(int main_loop_p, int can_loop_p) {
   /* Set up interrupt period (microsecond) */
   /* IRQ 0 */
-  set_fpga_status(
-      NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ0_period_us, main_loop_p));
+  set_fpga_status( NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ0_period_us,
+                                     main_loop_p));
 
   /* IRQ 1 */
   set_fpga_status(
@@ -307,9 +307,57 @@ void FpgaHandler::get_ni_pwrb_to_buf() {
 
   for (int i = 0; i < 24; i++) {
     if (i % 2 == 0)
-      pwrb_I_buf[i / 2] = rx_arr[i] * powerboard_Ifactor[i / 2] + powerboard_Ioffset[i / 2];
+      pwrb_I_buf[i / 2] =
+          rx_arr[i] * pwrb_cal_params_.I.factor[i / 2] + pwrb_cal_params_.I.offset[i / 2];
     if (i % 2 == 1)
-      pwrb_V_buf[(i - 1) / 2] =
-          rx_arr[i] * powerboard_Vfactor[(i - 1) / 2] + powerboard_Voffset[(i - 1) / 2];
+      pwrb_V_buf[(i - 1) / 2] = rx_arr[i] * pwrb_cal_params_.V.factor[(i - 1) / 2] +
+                                pwrb_cal_params_.V.factor[(i - 1) / 2];
   }
+}
+
+void FpgaHandler::loadCalibrationParameters(const YAML::Node& factors_node) {
+  std::cout << "Loading PowerBoard Scaling Factors..." << std::endl;
+  size_t idx = 0;
+  for (const auto& f : factors_node) {
+    if (idx >= pwrb_cal_params_.V.factor.size()) {
+      std::cerr << "Warning: More calibration entries in YAML than expected. Ignoring extra."
+                << std::endl;
+      break;
+    }
+
+    pwrb_cal_params_.I.factor[idx] = f["Current_Factor"].as<double>();
+    pwrb_cal_params_.I.offset[idx] = f["Current_Offset"].as<double>();
+    pwrb_cal_params_.V.factor[idx] = f["Voltage_Factor"].as<double>();
+    pwrb_cal_params_.V.offset[idx] = f["Voltage_Offset"].as<double>();
+
+    idx++;
+  }
+}
+
+double FpgaHandler::get_v_factor(size_t index) const {
+  if (index >= pwrb_cal_params_.V.factor.size()) {
+    throw std::out_of_range("Index out of range for voltage factor.");
+  }
+  return pwrb_cal_params_.V.factor[index];
+}
+
+double FpgaHandler::get_v_offset(size_t index) const {
+  if (index >= pwrb_cal_params_.V.offset.size()) {
+    throw std::out_of_range("Index out of range for voltage offset.");
+  }
+  return pwrb_cal_params_.V.offset[index];
+}
+
+double FpgaHandler::get_i_factor(size_t index) const {
+  if (index >= pwrb_cal_params_.I.factor.size()) {
+    throw std::out_of_range("Index out of range for current factor.");
+  }
+  return pwrb_cal_params_.I.factor[index];
+}
+
+double FpgaHandler::get_i_offset(size_t index) const {
+  if (index >= pwrb_cal_params_.I.offset.size()) {
+    throw std::out_of_range("Index out of range for current offset.");
+  }
+  return pwrb_cal_params_.I.offset[index];
 }

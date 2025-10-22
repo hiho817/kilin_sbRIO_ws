@@ -6,6 +6,7 @@
 #include <ncurses.h>
 #include <signal.h>
 #include <unistd.h>
+#include <yaml-cpp/yaml.h>
 
 #include <bitset>
 #include <functional>
@@ -19,6 +20,16 @@
 #include "color.hpp"
 #include "msg.hpp"
 #undef OK
+
+struct PwrbCalParam {
+  std::array<double, 12> factor;
+  std::array<double, 12> offset;
+};
+
+struct PwrbCalParams {
+  PwrbCalParam V;
+  PwrbCalParam I;
+};
 
 class ModuleIO_CAN {
  public:
@@ -118,17 +129,22 @@ class FpgaHandler {
     return NiFpga_MergeStatus(&status_, newStatus);
   };
 
+  // interrupt setup
   void set_ni_irq_period(int main_loop_period, int can_loop_period);
+
+  // powerboard functions
   void set_ni_pwrb(std::vector<bool>* powerboard_state_);
   void get_ni_pwrb_to_buf();
 
-  double powerboard_Ifactor[12];
-  double powerboard_Ioffset[12];
-  double powerboard_Vfactor[12];
-  double powerboard_Voffset[12];
+  // calibration parameter loader
+  void loadCalibrationParameters(const YAML::Node& factors_node);
+  double get_v_factor(size_t index) const;
+  double get_v_offset(size_t index) const;
+  double get_i_factor(size_t index) const;
+  double get_i_offset(size_t index) const;
 
-  double pwrb_I_buf[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  double pwrb_V_buf[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  double pwrb_I_buf[12] = {0};
+  double pwrb_V_buf[12] = {0};
 
  private:
   NiFpga_Status status_;
@@ -141,6 +157,8 @@ class FpgaHandler {
 
   NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16 r_powerboard_data_;
   NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size size_powerboard_data_;
+
+  PwrbCalParams pwrb_cal_params_;
 };
 
 #endif
