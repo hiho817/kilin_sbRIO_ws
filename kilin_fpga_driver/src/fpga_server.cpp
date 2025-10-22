@@ -2,7 +2,7 @@
 
 /* TCP node connection setup*/
 volatile int motor_message_updated = 0;
-volatile int fpga_message_updated = 0;  // power
+volatile int pwrb_message_updated = 0;  // power
 
 std::mutex mutex_;
 
@@ -17,7 +17,7 @@ void motor_data_cb(motor_msg::MotorCmdStamped motor_msg) {
 power_msg::PowerCmdStamped power_cmd_data;
 void power_data_cb(power_msg::PowerCmdStamped power_msg) {
   mutex_.lock();
-  fpga_message_updated = 1;
+  pwrb_message_updated = 1;
   power_cmd_data = power_msg;
   mutex_.unlock();
 }
@@ -49,7 +49,7 @@ Kilin::Kilin() {
   powerboard_state_.push_back(signal_switch_);
   powerboard_state_.push_back(power_switch_);
 
-  ModeFsm fsm(&modules_list_, &powerboard_state_, fpga_.pwrb_V_buf);
+  ModeFsm fsm(&modules_list_, &powerboard_state_, fpga_.pwrb_io.pwrb_V_buf);
   fsm_ = fsm;
   fsm_.NO_CAN_TIMEDOUT_ERROR_ = &NO_CAN_TIMEDOUT_ERROR_;
   fsm_.NO_SWITCH_TIMEDOUT_ERROR_ = &NO_SWITCH_TIMEDOUT_ERROR_;
@@ -80,7 +80,7 @@ void Kilin::load_config_() {
   // load interrupt periods
   main_irq_period_us_ = yaml_node_["MainLoop_period_us"].as<int>();
   can_irq_period_us_ = yaml_node_["CANLoop_period_us"].as<int>();
-
+  
   /* initialize hip modules */
   modules_num_ = yaml_node_["Number_of_modules"].as<int>();
   for (int i = 0; i < modules_num_; i++) {
@@ -89,17 +89,16 @@ void Kilin::load_config_() {
     modules_list_.push_back(module);
   }
 
-
   // initialize powerboard calibration parameters
   YAML::Node factors_node = yaml_node_["Powerboard_Scaling_Factor"];
   std::cout << "PowerBoard Scaling Factor" << std::endl;
-  fpga_.loadCalibrationParameters(factors_node);
+  fpga_.pwrb_io.set_pwrb_cal_params_from_yml(factors_node);
   int idx_ = 0;
   for (auto f : factors_node) {
-    std::cout << "Index " << idx_ << " Current Factor: " << fpga_.get_i_factor(idx_)
-              << ", Current Offset: " << fpga_.get_i_offset(idx_) << std::endl
-              << " Voltage Factor: " << fpga_.get_v_factor(idx_)
-              << ", Voltage Offset: " << fpga_.get_v_offset(idx_) << std::endl;
+    std::cout << "Index " << idx_ << " Current Factor: " << fpga_.pwrb_io.get_i_factor(idx_)
+              << ", Current Offset: " << fpga_.pwrb_io.get_i_offset(idx_) << std::endl
+              << " Voltage Factor: " << fpga_.pwrb_io.get_v_factor(idx_)
+              << ", Voltage Offset: " << fpga_.pwrb_io.get_v_offset(idx_) << std::endl;
     idx_++;
   }
 }
@@ -139,8 +138,6 @@ void Kilin::interruptHandler(core::Subscriber<power_msg::PowerCmdStamped>& cmd_p
         fpga_.set_fpga_status(NiFpga_AcknowledgeIrqs(fpga_.session, irqsAsserted));
       }
       if (irqsAsserted & NiFpga_Irq_1) {
-        /* TODO: do something if IRQ1 */
-        /* Handling CAN-BUS communication */
         canLoop_();
 
         // Acknowledge IRQ to begin DMA acquisition
@@ -155,8 +152,8 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
                       core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
                       core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
                       core::Publisher<motor_msg::MotorStateStamped>& state_pub_) {
-  fpga_.set_ni_pwrb(&powerboard_state_);
-  fpga_.get_ni_pwrb_to_buf();
+  fpga_.pwrb_io.set_ni_pwrb(&powerboard_state_);
+  fpga_.pwrb_io.get_ni_pwrb_to_buf();
 
   core::spinOnce();
   mutex_.lock();
@@ -182,7 +179,7 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
   }
 
   if (NO_SWITCH_TIMEDOUT_ERROR_) {
-    if (fpga_message_updated) {
+    if (pwrb_message_updated) {
       powerboard_state_.at(0) = power_cmd_data.digital();
       powerboard_state_.at(1) = power_cmd_data.signal();
       powerboard_state_.at(2) = power_cmd_data.power();
@@ -200,7 +197,7 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
         fsm_.switchMode(Mode::CONFIG);
       else if (power_cmd_data.robot_mode() == (int)Mode::REST && fsm_.workingMode_ != Mode::REST)
         fsm_.switchMode(Mode::REST);
-      fpga_message_updated = 0;
+      pwrb_message_updated = 0;
     }
   }
   motor_fb_msg.mutable_header()->set_seq(seq);
@@ -256,41 +253,41 @@ void Kilin::powerboardPack(power_msg::PowerStateStamped& power_dashboard_reply) 
   else if (fsm_.workingMode_ == Mode::SET_ZERO)
     power_dashboard_reply.set_robot_mode(power_msg::SET_ZERO);
 
-  power_dashboard_reply.set_v_0(fpga_.pwrb_V_buf[0]);
-  power_dashboard_reply.set_i_0(fpga_.pwrb_I_buf[0]);
+  power_dashboard_reply.set_v_0(fpga_.pwrb_io.pwrb_V_buf[0]);
+  power_dashboard_reply.set_i_0(fpga_.pwrb_io.pwrb_I_buf[0]);
 
-  power_dashboard_reply.set_v_1(fpga_.pwrb_V_buf[1]);
-  power_dashboard_reply.set_i_1(fpga_.pwrb_I_buf[1]);
+  power_dashboard_reply.set_v_1(fpga_.pwrb_io.pwrb_V_buf[1]);
+  power_dashboard_reply.set_i_1(fpga_.pwrb_io.pwrb_I_buf[1]);
 
-  power_dashboard_reply.set_v_2(fpga_.pwrb_V_buf[2]);
-  power_dashboard_reply.set_i_2(fpga_.pwrb_I_buf[2]);
+  power_dashboard_reply.set_v_2(fpga_.pwrb_io.pwrb_V_buf[2]);
+  power_dashboard_reply.set_i_2(fpga_.pwrb_io.pwrb_I_buf[2]);
 
-  power_dashboard_reply.set_v_3(fpga_.pwrb_V_buf[3]);
-  power_dashboard_reply.set_i_3(fpga_.pwrb_I_buf[3]);
+  power_dashboard_reply.set_v_3(fpga_.pwrb_io.pwrb_V_buf[3]);
+  power_dashboard_reply.set_i_3(fpga_.pwrb_io.pwrb_I_buf[3]);
 
-  power_dashboard_reply.set_v_4(fpga_.pwrb_V_buf[4]);
-  power_dashboard_reply.set_i_4(fpga_.pwrb_I_buf[4]);
+  power_dashboard_reply.set_v_4(fpga_.pwrb_io.pwrb_V_buf[4]);
+  power_dashboard_reply.set_i_4(fpga_.pwrb_io.pwrb_I_buf[4]);
 
-  power_dashboard_reply.set_v_5(fpga_.pwrb_V_buf[5]);
-  power_dashboard_reply.set_i_5(fpga_.pwrb_I_buf[5]);
+  power_dashboard_reply.set_v_5(fpga_.pwrb_io.pwrb_V_buf[5]);
+  power_dashboard_reply.set_i_5(fpga_.pwrb_io.pwrb_I_buf[5]);
 
-  power_dashboard_reply.set_v_6(fpga_.pwrb_V_buf[6]);
-  power_dashboard_reply.set_i_6(fpga_.pwrb_I_buf[6]);
+  power_dashboard_reply.set_v_6(fpga_.pwrb_io.pwrb_V_buf[6]);
+  power_dashboard_reply.set_i_6(fpga_.pwrb_io.pwrb_I_buf[6]);
 
-  power_dashboard_reply.set_v_7(fpga_.pwrb_V_buf[7]);
-  power_dashboard_reply.set_i_7(fpga_.pwrb_I_buf[7]);
+  power_dashboard_reply.set_v_7(fpga_.pwrb_io.pwrb_V_buf[7]);
+  power_dashboard_reply.set_i_7(fpga_.pwrb_io.pwrb_I_buf[7]);
 
-  power_dashboard_reply.set_v_8(fpga_.pwrb_V_buf[8]);
-  power_dashboard_reply.set_i_8(fpga_.pwrb_I_buf[8]);
+  power_dashboard_reply.set_v_8(fpga_.pwrb_io.pwrb_V_buf[8]);
+  power_dashboard_reply.set_i_8(fpga_.pwrb_io.pwrb_I_buf[8]);
 
-  power_dashboard_reply.set_v_9(fpga_.pwrb_V_buf[9]);
-  power_dashboard_reply.set_i_9(fpga_.pwrb_I_buf[9]);
+  power_dashboard_reply.set_v_9(fpga_.pwrb_io.pwrb_V_buf[9]);
+  power_dashboard_reply.set_i_9(fpga_.pwrb_io.pwrb_I_buf[9]);
 
-  power_dashboard_reply.set_v_10(fpga_.pwrb_V_buf[10]);
-  power_dashboard_reply.set_i_10(fpga_.pwrb_I_buf[10]);
+  power_dashboard_reply.set_v_10(fpga_.pwrb_io.pwrb_V_buf[10]);
+  power_dashboard_reply.set_i_10(fpga_.pwrb_io.pwrb_I_buf[10]);
 
-  power_dashboard_reply.set_v_11(fpga_.pwrb_V_buf[11]);
-  power_dashboard_reply.set_i_11(fpga_.pwrb_I_buf[11]);
+  power_dashboard_reply.set_v_11(fpga_.pwrb_io.pwrb_V_buf[11]);
+  power_dashboard_reply.set_i_11(fpga_.pwrb_io.pwrb_I_buf[11]);
 
   mutex_.unlock();
 }

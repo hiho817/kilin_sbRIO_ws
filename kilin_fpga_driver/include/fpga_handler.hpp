@@ -116,6 +116,43 @@ class ModuleIO_CAN {
   std::vector<Motor>* motors_list_;
 };
 
+class PwrbIO {
+ public:
+  PwrbIO(NiFpga_Status status_, NiFpga_Session fpga_session_);
+  PwrbIO() {};
+
+  NiFpga_Status get_fpga_status() { return status_; };
+  NiFpga_Status set_fpga_status(const NiFpga_Status newStatus) {
+    return NiFpga_MergeStatus(&status_, newStatus);
+  };
+
+  void set_ni_pwrb(std::vector<bool>* powerboard_state_);
+  void get_ni_pwrb_to_buf();
+
+  // calibration parameter loader
+  void set_pwrb_cal_params_from_yml(const YAML::Node& factors_node);
+  double get_v_factor(size_t index) const;
+  double get_v_offset(size_t index) const;
+  double get_i_factor(size_t index) const;
+  double get_i_offset(size_t index) const;
+
+  double pwrb_I_buf[12] = {0};
+  double pwrb_V_buf[12] = {0};
+
+ private:
+  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_digital_;
+  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_signal_;
+  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_power_;
+
+  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16 r_powerboard_data_;
+  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size size_powerboard_data_;
+
+  NiFpga_Status status_;
+  NiFpga_Session fpga_session_;
+
+  PwrbCalParams pwrb_cal_params_;
+};
+
 class FpgaHandler {
  public:
   FpgaHandler();
@@ -131,34 +168,10 @@ class FpgaHandler {
 
   // interrupt setup
   void set_ni_irq_period(int main_loop_period, int can_loop_period);
-
-  // powerboard functions
-  void set_ni_pwrb(std::vector<bool>* powerboard_state_);
-  void get_ni_pwrb_to_buf();
-
-  // calibration parameter loader
-  void loadCalibrationParameters(const YAML::Node& factors_node);
-  double get_v_factor(size_t index) const;
-  double get_v_offset(size_t index) const;
-  double get_i_factor(size_t index) const;
-  double get_i_offset(size_t index) const;
-
-  double pwrb_I_buf[12] = {0};
-  double pwrb_V_buf[12] = {0};
+  PwrbIO pwrb_io;
 
  private:
   NiFpga_Status status_;
-  // Fpga interrupt request
-
-  // powerboard
-  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_digital_;
-  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_signal_;
-  NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_power_;
-
-  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16 r_powerboard_data_;
-  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size size_powerboard_data_;
-
-  PwrbCalParams pwrb_cal_params_;
 };
 
 #endif

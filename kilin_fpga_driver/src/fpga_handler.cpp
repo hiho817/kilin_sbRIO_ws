@@ -63,7 +63,6 @@ ModuleIO_CAN::ModuleIO_CAN(NiFpga_Status status, NiFpga_Session fpga_session, st
   }
 }
 
-// Write FPGA status
 void ModuleIO_CAN::set_ni_CAN_id(uint32_t id1, uint32_t id2) {
   set_fpga_status(NiFpga_WriteU32(fpga_session_, r_CAN_id1_, id1));
   set_fpga_status(NiFpga_WriteU32(fpga_session_, r_CAN_id2_, id2));
@@ -82,18 +81,19 @@ void ModuleIO_CAN::get_ni_CAN_id_fc(uint32_t* fc1, uint32_t* fc2) {
 void ModuleIO_CAN::set_ni_port_select(const NiFpga_Bool* array) {
   set_fpga_status(NiFpga_WriteArrayBool(fpga_session_, r_port_select_, array, r_port_select_size_));
 }
+
 void ModuleIO_CAN::set_ni_tx_data_(const uint8_t* tx_arr1, const uint8_t* tx_arr2) {
   set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_buf_id1_, tx_arr1, r_tx_buf_size_));
   set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_buf_id2_, tx_arr2, r_tx_buf_size_));
 }
+
 void ModuleIO_CAN::set_ni_CAN_transmit(NiFpga_Bool value) {
   set_fpga_status(NiFpga_WriteBool(fpga_session_, r_CAN_transmit_, value));
 }
+
 void ModuleIO_CAN::set_ni_timeout_us_(uint32_t value) {
   set_fpga_status(NiFpga_WriteU32(fpga_session_, r_timeout_us_, value));
 }
-
-// Read FPGA status
 
 void ModuleIO_CAN::get_ni_rx_data(uint8_t* rx_arr1, uint8_t* rx_arr2) {
   set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_rx_buf_id1_, rx_arr1, r_rx_buf_size_));
@@ -185,7 +185,6 @@ void ModuleIO_CAN::CAN_recieve_feedback(CAN_rxdata* rxdata_id1, CAN_rxdata* rxda
   rxdata_id2->position_ -= motor_H_bias_;
 }
 
-// pack CAN data
 void ModuleIO_CAN::CAN_encode_(uint8_t (&txmsg)[8], CAN_txdata txdata) {
   int pos_int, torque_int, KP_int, KI_int, KD_int;
   pos_int = float_to_uint_(-txdata.position_, P_CMD_MIN, P_CMD_MAX, 16);
@@ -245,64 +244,15 @@ float ModuleIO_CAN::uint_to_float_(int x_int, float x_min, float x_max, int bits
   return ((float)x_int) * span / ((float)((1 << bits) - 1)) + offset;
 }
 
-FpgaHandler::FpgaHandler() {
-  status_ = NiFpga_Initialize();
-  important_message("[FPGA Handler] Fpga Initialized");
-
-  set_fpga_status(NiFpga_Open(NiFpga_FPGA_RS485_v1_2_Bitfile, NiFpga_FPGA_RS485_v1_2_Signature,
-                              "RIO0", 0, &session));
-  important_message("[FPGA Handler] Session opened");
-
-  set_fpga_status(NiFpga_ReserveIrqContext(session, &irqContext));
-  important_message("[FPGA Handler] IRQ reserved");
-
-  w_pb_digital_ = NiFpga_FPGA_RS485_v1_2_ControlBool_Digital;
-  w_pb_signal_ = NiFpga_FPGA_RS485_v1_2_ControlBool_Signal;
-  w_pb_power_ = NiFpga_FPGA_RS485_v1_2_ControlBool_Power;
-
-  r_powerboard_data_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16_Data;
-  size_powerboard_data_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size_Data;
-
-  // w_vicon_trigger = NiFpga_FPGA_RS485_v1_2_ControlBool_Conn9_2w;
-
-  for (int i = 0; i < 12; i++) {
-    pwrb_V_buf[i] = 0;
-    pwrb_I_buf[i] = 0;
-  }
+void PwrbIO::set_ni_pwrb(std::vector<bool>* powerboard_state_) {
+  set_fpga_status(NiFpga_WriteBool(fpga_session_, w_pb_digital_, powerboard_state_->at(0)));
+  set_fpga_status(NiFpga_WriteBool(fpga_session_, w_pb_signal_, powerboard_state_->at(1)));
+  set_fpga_status(NiFpga_WriteBool(fpga_session_, w_pb_power_, powerboard_state_->at(2)));
 }
 
-FpgaHandler::~FpgaHandler() {
-  /* unreserve IRQ status to prevent memory leaks */
-  set_fpga_status(NiFpga_UnreserveIrqContext(session, &irqContext));
-
-  /* Close the session */
-  set_fpga_status(NiFpga_Close(session, 0));
-  important_message("[FPGA Handler] Session Closed");
-
-  set_fpga_status(NiFpga_Finalize());
-  important_message("[FPGA Handler] Fpga Finalized");
-}
-
-void FpgaHandler::set_ni_irq_period(int main_loop_p, int can_loop_p) {
-  /* Set up interrupt period (microsecond) */
-  /* IRQ 0 */
-  set_fpga_status( NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ0_period_us,
-                                     main_loop_p));
-
-  /* IRQ 1 */
-  set_fpga_status(
-      NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ1_period_us, can_loop_p));
-}
-
-void FpgaHandler::set_ni_pwrb(std::vector<bool>* powerboard_state_) {
-  set_fpga_status(NiFpga_WriteBool(session, w_pb_digital_, powerboard_state_->at(0)));
-  set_fpga_status(NiFpga_WriteBool(session, w_pb_signal_, powerboard_state_->at(1)));
-  set_fpga_status(NiFpga_WriteBool(session, w_pb_power_, powerboard_state_->at(2)));
-}
-
-void FpgaHandler::get_ni_pwrb_to_buf() {
+void PwrbIO::get_ni_pwrb_to_buf() {
   uint16_t rx_arr[24];
-  set_fpga_status(NiFpga_ReadArrayU16(session, NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16_Data,
+  set_fpga_status(NiFpga_ReadArrayU16(fpga_session_, NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16_Data,
                                       rx_arr, NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size_Data));
 
   for (int i = 0; i < 24; i++) {
@@ -315,7 +265,16 @@ void FpgaHandler::get_ni_pwrb_to_buf() {
   }
 }
 
-void FpgaHandler::loadCalibrationParameters(const YAML::Node& factors_node) {
+PwrbIO::PwrbIO(NiFpga_Status status, NiFpga_Session fpga_session)
+    : status_(status),
+      fpga_session_(fpga_session),
+      w_pb_digital_(NiFpga_FPGA_RS485_v1_2_ControlBool_Digital),
+      w_pb_signal_(NiFpga_FPGA_RS485_v1_2_ControlBool_Signal),
+      w_pb_power_(NiFpga_FPGA_RS485_v1_2_ControlBool_Power),
+      r_powerboard_data_(NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16_Data),
+      size_powerboard_data_(NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size_Data) {}
+
+void PwrbIO::set_pwrb_cal_params_from_yml(const YAML::Node& factors_node) {
   std::cout << "Loading PowerBoard Scaling Factors..." << std::endl;
   size_t idx = 0;
   for (const auto& f : factors_node) {
@@ -334,30 +293,66 @@ void FpgaHandler::loadCalibrationParameters(const YAML::Node& factors_node) {
   }
 }
 
-double FpgaHandler::get_v_factor(size_t index) const {
+double PwrbIO::get_v_factor(size_t index) const {
   if (index >= pwrb_cal_params_.V.factor.size()) {
     throw std::out_of_range("Index out of range for voltage factor.");
   }
   return pwrb_cal_params_.V.factor[index];
 }
 
-double FpgaHandler::get_v_offset(size_t index) const {
+double PwrbIO::get_v_offset(size_t index) const {
   if (index >= pwrb_cal_params_.V.offset.size()) {
     throw std::out_of_range("Index out of range for voltage offset.");
   }
   return pwrb_cal_params_.V.offset[index];
 }
 
-double FpgaHandler::get_i_factor(size_t index) const {
+double PwrbIO::get_i_factor(size_t index) const {
   if (index >= pwrb_cal_params_.I.factor.size()) {
     throw std::out_of_range("Index out of range for current factor.");
   }
   return pwrb_cal_params_.I.factor[index];
 }
 
-double FpgaHandler::get_i_offset(size_t index) const {
+double PwrbIO::get_i_offset(size_t index) const {
   if (index >= pwrb_cal_params_.I.offset.size()) {
     throw std::out_of_range("Index out of range for current offset.");
   }
   return pwrb_cal_params_.I.offset[index];
+}
+
+FpgaHandler::FpgaHandler() {
+  status_ = NiFpga_Initialize();
+  pwrb_io = PwrbIO(status_, session);
+  important_message("[FPGA Handler] Fpga Initialized");
+
+  set_fpga_status(NiFpga_Open(NiFpga_FPGA_RS485_v1_2_Bitfile, NiFpga_FPGA_RS485_v1_2_Signature,
+                              "RIO0", 0, &session));
+  important_message("[FPGA Handler] Session opened");
+
+  set_fpga_status(NiFpga_ReserveIrqContext(session, &irqContext));
+  important_message("[FPGA Handler] IRQ reserved");
+}
+
+FpgaHandler::~FpgaHandler() {
+  /* unreserve IRQ status to prevent memory leaks */
+  set_fpga_status(NiFpga_UnreserveIrqContext(session, &irqContext));
+
+  /* Close the session */
+  set_fpga_status(NiFpga_Close(session, 0));
+  important_message("[FPGA Handler] Session Closed");
+
+  set_fpga_status(NiFpga_Finalize());
+  important_message("[FPGA Handler] Fpga Finalized");
+}
+
+void FpgaHandler::set_ni_irq_period(int main_loop_p, int can_loop_p) {
+  /* Set up interrupt period (microsecond) */
+  /* IRQ 0 */
+  set_fpga_status(
+      NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ0_period_us, main_loop_p));
+
+  /* IRQ 1 */
+  set_fpga_status(
+      NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ1_period_us, can_loop_p));
 }
