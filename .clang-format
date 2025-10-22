@@ -10,9 +10,9 @@ BasedOnStyle: Google
 # Other options include: Allman, Stroustrup, GNU
 BreakBeforeBraces: Attach
 
-# Set the maximum number of characters per line to 100.
+# Set the maximum number of characters per line to 120.
 # The default for Google style is 80. A value of 0 means unlimited.
-ColumnLimit: 100
+ColumnLimit: 120
 
 # Use spaces instead of tabs.
 UseTab: Never

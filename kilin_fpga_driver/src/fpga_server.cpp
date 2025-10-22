@@ -49,7 +49,7 @@ Kilin::Kilin() {
   powerboard_state_.push_back(signal_switch_);
   powerboard_state_.push_back(power_switch_);
 
-  ModeFsm fsm(&modules_list_, &powerboard_state_, fpga_.pwrb_io.pwrb_V_buf);
+  ModeFsm fsm(&modules_list_, &powerboard_state_);
   fsm_ = fsm;
   fsm_.NO_CAN_TIMEDOUT_ERROR_ = &NO_CAN_TIMEDOUT_ERROR_;
   fsm_.NO_SWITCH_TIMEDOUT_ERROR_ = &NO_SWITCH_TIMEDOUT_ERROR_;
@@ -253,41 +253,41 @@ void Kilin::powerboardPack(power_msg::PowerStateStamped& power_dashboard_reply) 
   else if (fsm_.workingMode_ == Mode::SET_ZERO)
     power_dashboard_reply.set_robot_mode(power_msg::SET_ZERO);
 
-  power_dashboard_reply.set_v_0(fpga_.pwrb_io.pwrb_V_buf[0]);
-  power_dashboard_reply.set_i_0(fpga_.pwrb_io.pwrb_I_buf[0]);
+  power_dashboard_reply.set_v_0(fpga_.pwrb_io.get_v_buf(0));
+  power_dashboard_reply.set_i_0(fpga_.pwrb_io.get_i_buf(0));
 
-  power_dashboard_reply.set_v_1(fpga_.pwrb_io.pwrb_V_buf[1]);
-  power_dashboard_reply.set_i_1(fpga_.pwrb_io.pwrb_I_buf[1]);
+  power_dashboard_reply.set_v_1(fpga_.pwrb_io.get_v_buf(1));
+  power_dashboard_reply.set_i_1(fpga_.pwrb_io.get_i_buf(1));
 
-  power_dashboard_reply.set_v_2(fpga_.pwrb_io.pwrb_V_buf[2]);
-  power_dashboard_reply.set_i_2(fpga_.pwrb_io.pwrb_I_buf[2]);
+  power_dashboard_reply.set_v_2(fpga_.pwrb_io.get_v_buf(2));
+  power_dashboard_reply.set_i_2(fpga_.pwrb_io.get_i_buf(2));
 
-  power_dashboard_reply.set_v_3(fpga_.pwrb_io.pwrb_V_buf[3]);
-  power_dashboard_reply.set_i_3(fpga_.pwrb_io.pwrb_I_buf[3]);
+  power_dashboard_reply.set_v_3(fpga_.pwrb_io.get_v_buf(3));
+  power_dashboard_reply.set_i_3(fpga_.pwrb_io.get_i_buf(3));
 
-  power_dashboard_reply.set_v_4(fpga_.pwrb_io.pwrb_V_buf[4]);
-  power_dashboard_reply.set_i_4(fpga_.pwrb_io.pwrb_I_buf[4]);
+  power_dashboard_reply.set_v_4(fpga_.pwrb_io.get_v_buf(4));
+  power_dashboard_reply.set_i_4(fpga_.pwrb_io.get_i_buf(4));
 
-  power_dashboard_reply.set_v_5(fpga_.pwrb_io.pwrb_V_buf[5]);
-  power_dashboard_reply.set_i_5(fpga_.pwrb_io.pwrb_I_buf[5]);
+  power_dashboard_reply.set_v_5(fpga_.pwrb_io.get_v_buf(5));
+  power_dashboard_reply.set_i_5(fpga_.pwrb_io.get_i_buf(5));
 
-  power_dashboard_reply.set_v_6(fpga_.pwrb_io.pwrb_V_buf[6]);
-  power_dashboard_reply.set_i_6(fpga_.pwrb_io.pwrb_I_buf[6]);
+  power_dashboard_reply.set_v_6(fpga_.pwrb_io.get_v_buf(6));
+  power_dashboard_reply.set_i_6(fpga_.pwrb_io.get_i_buf(6));
 
-  power_dashboard_reply.set_v_7(fpga_.pwrb_io.pwrb_V_buf[7]);
-  power_dashboard_reply.set_i_7(fpga_.pwrb_io.pwrb_I_buf[7]);
+  power_dashboard_reply.set_v_7(fpga_.pwrb_io.get_v_buf(7));
+  power_dashboard_reply.set_i_7(fpga_.pwrb_io.get_i_buf(7));
 
-  power_dashboard_reply.set_v_8(fpga_.pwrb_io.pwrb_V_buf[8]);
-  power_dashboard_reply.set_i_8(fpga_.pwrb_io.pwrb_I_buf[8]);
+  power_dashboard_reply.set_v_8(fpga_.pwrb_io.get_v_buf(8));
+  power_dashboard_reply.set_i_8(fpga_.pwrb_io.get_i_buf(8));
 
-  power_dashboard_reply.set_v_9(fpga_.pwrb_io.pwrb_V_buf[9]);
-  power_dashboard_reply.set_i_9(fpga_.pwrb_io.pwrb_I_buf[9]);
+  power_dashboard_reply.set_v_9(fpga_.pwrb_io.get_v_buf(9));
+  power_dashboard_reply.set_i_9(fpga_.pwrb_io.get_i_buf(9));
 
-  power_dashboard_reply.set_v_10(fpga_.pwrb_io.pwrb_V_buf[10]);
-  power_dashboard_reply.set_i_10(fpga_.pwrb_io.pwrb_I_buf[10]);
+  power_dashboard_reply.set_v_10(fpga_.pwrb_io.get_v_buf(10));
+  power_dashboard_reply.set_i_10(fpga_.pwrb_io.get_i_buf(10));
 
-  power_dashboard_reply.set_v_11(fpga_.pwrb_io.pwrb_V_buf[11]);
-  power_dashboard_reply.set_i_11(fpga_.pwrb_io.pwrb_I_buf[11]);
+  power_dashboard_reply.set_v_11(fpga_.pwrb_io.get_v_buf(11));
+  power_dashboard_reply.set_i_11(fpga_.pwrb_io.get_i_buf(11));
 
   mutex_.unlock();
 }

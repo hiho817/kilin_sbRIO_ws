@@ -19,7 +19,7 @@ enum class Scenario { ROBOT, SINGLE_MODULE };
 class ModeFsm {
  public:
   /* pass modules vector by reference*/
-  ModeFsm(std::vector<HipModule>* module_list_, std::vector<bool>* pb_state_, double* pb_v);
+  ModeFsm(std::vector<HipModule>* module_list_, std::vector<bool>* pb_state_);
   ModeFsm() {}
   Mode workingMode_;
   Mode prev_workingMode_;
@@ -42,7 +42,6 @@ class ModeFsm {
 
   bool* NO_CAN_TIMEDOUT_ERROR_;
   bool* NO_SWITCH_TIMEDOUT_ERROR_;
-  double* powerboard_voltage;
 
   void runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
               const motor_msg::MotorCmdStamped& motor_cmd_msg);

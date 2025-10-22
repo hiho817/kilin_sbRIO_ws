@@ -9,8 +9,8 @@ using namespace std;
 mutex cons_mtx_;
 int refresh_flag;
 
-void Console::init(FpgaHandler* fpga, vector<HipModule>* mods_, std::vector<bool>* pb_state_ptr_,
-                   ModeFsm* fsm_ptr_, std::mutex* mtx_ptr_) {
+void Console::init(FpgaHandler* fpga, vector<HipModule>* mods_, std::vector<bool>* pb_state_ptr_, ModeFsm* fsm_ptr_,
+                   std::mutex* mtx_ptr_) {
   fpga_ = fpga;
 
   modL_ptr_ = &mods_->at(0);
@@ -48,8 +48,7 @@ void Console::refreshWindow() {
   Panel p_power_("[P] Power Board ", "power", lm_null, 1, 9, 60, 40, true);
   Panel p_cmain_("[F] FPGA Server ", "c_main", lm_null, 1, 1, 8, 40, true);
   Panel p_modL_("[L] L_Module ", "module", modL_ptr_, 41, 1, (term_max_y_ - 2) / 2 - 1, 60, true);
-  Panel p_modR_("[R] R_Module ", "module", modR_ptr_, 41, (term_max_y_) / 2,
-                (term_max_y_ - 2) / 2 - 1, 60, true);
+  Panel p_modR_("[R] R_Module ", "module", modR_ptr_, 41, (term_max_y_) / 2, (term_max_y_ - 2) / 2 - 1, 60, true);
   // Panel p_modS1_("[1] Steering1 ", "module", modL_ptr_, 93, 1, (term_max_y_ - 2) / 2 - 1, 60,
   // true);
 
@@ -59,9 +58,8 @@ void Console::refreshWindow() {
   while (1) {
     cons_mtx_.lock();
 
-    p_power_.infoDisplay(fpga_, powerboard_state_->at(0), powerboard_state_->at(1),
-                         powerboard_state_->at(2));
-    p_cmain_.infoDisplay(Behavior::TCP_SLAVE, fsm_->workingMode_);
+    p_power_.print_pwrb_info(fpga_, powerboard_state_->at(0), powerboard_state_->at(1), powerboard_state_->at(2));
+    p_cmain_.print_mode_main(Behavior::TCP_SLAVE, fsm_->workingMode_);
     p_modL_.infoDisplay();
     p_modR_.infoDisplay();
     // p_modS1_.infoDisplay();
@@ -71,8 +69,7 @@ void Console::refreshWindow() {
   }
 }
 
-void InputPanel::init(vector<HipModule>* mods_, bool* if_resetPanel, int term_max_x,
-                      int term_max_y) {
+void InputPanel::init(vector<HipModule>* mods_, bool* if_resetPanel, int term_max_x, int term_max_y) {
   win_ = newwin(3, term_max_x - 1, term_max_y - 3, 1);
 
   modL_ptr_ = &mods_->at(0);
@@ -307,8 +304,7 @@ vector<string> InputPanel::tokenizer(string s) {
   return bufs;
 }
 
-Panel::Panel(string title, string type, HipModule* lm_, int org_x, int org_y, int height, int width,
-             bool box_on) {
+Panel::Panel(string title, string type, HipModule* lm_, int org_x, int org_y, int height, int width, bool box_on) {
   org_x_ = org_x;
   org_y_ = org_y;
   height_ = height;
@@ -383,42 +379,35 @@ void Panel::infoDisplay()  // type = module
   wrefresh(win_);
 }
 
-void Panel::infoDisplay(FpgaHandler* fpga, bool digital_switch, bool signal_switch,
-                        bool power_switch)  // type = power
-{
+// type = power
+void Panel::print_pwrb_info(FpgaHandler* fpga, bool digital_switch, bool signal_switch, bool power_switch) {
   mvwprintw(win_, 2, 1, "HARDWARE POWER SWITCH ----------------");
   mvwprintw(win_, 3, 1, "[D] Digital:   %4d", digital_switch);
   mvwprintw(win_, 4, 1, "[S] Signal:    %4d", signal_switch);
   mvwprintw(win_, 5, 1, "[P] Power:     %4d", power_switch);
-
   mvwprintw(win_, 6, 1, "Voltage Current ADC ------------------");
-  mvwprintw(win_, 7, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[0], fpga->pwrb_io.pwrb_I_buf[0]);
-  mvwprintw(win_, 8, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[1], fpga->pwrb_io.pwrb_I_buf[1]);
-  mvwprintw(win_, 9, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[2], fpga->pwrb_io.pwrb_I_buf[2]);
-  mvwprintw(win_, 10, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[3],
-            fpga->pwrb_io.pwrb_I_buf[3]);
-  mvwprintw(win_, 11, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[4],
-            fpga->pwrb_io.pwrb_I_buf[4]);
-  mvwprintw(win_, 12, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[5],
-            fpga->pwrb_io.pwrb_I_buf[5]);
-  mvwprintw(win_, 13, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[6],
-            fpga->pwrb_io.pwrb_I_buf[6]);
-  mvwprintw(win_, 14, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[7],
-            fpga->pwrb_io.pwrb_I_buf[7]);
-  mvwprintw(win_, 15, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[8],
-            fpga->pwrb_io.pwrb_I_buf[8]);
-  mvwprintw(win_, 16, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[9],
-            fpga->pwrb_io.pwrb_I_buf[9]);
-  mvwprintw(win_, 17, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[10],
-            fpga->pwrb_io.pwrb_I_buf[10]);
-  mvwprintw(win_, 18, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.pwrb_V_buf[11],
-            fpga->pwrb_io.pwrb_I_buf[11]);
+  mvwprintw(win_, 7, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(0), fpga->pwrb_io.get_i_buf(0));
+  mvwprintw(win_, 8, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(1), fpga->pwrb_io.get_i_buf(1));
+  mvwprintw(win_, 9, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(2), fpga->pwrb_io.get_i_buf(2));
+  mvwprintw(win_, 10, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(3), fpga->pwrb_io.get_i_buf(3));
+  mvwprintw(win_, 11, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(4), fpga->pwrb_io.get_i_buf(4));
+  mvwprintw(win_, 12, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(5), fpga->pwrb_io.get_i_buf(5));
+  mvwprintw(win_, 13, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(6), fpga->pwrb_io.get_i_buf(6));
+  mvwprintw(win_, 14, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(7), fpga->pwrb_io.get_i_buf(7));
+  mvwprintw(win_, 15, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(8), fpga->pwrb_io.get_i_buf(8));
+  mvwprintw(win_, 16, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(9), fpga->pwrb_io.get_i_buf(9));
+  mvwprintw(win_, 17, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(10), fpga->pwrb_io.get_i_buf(10));
+  mvwprintw(win_, 18, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(11), fpga->pwrb_io.get_i_buf(11));
+
+  // for (int i = 0; i < 12; ++i) {
+  //   mvwprintw(win_, 7 + i, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(i), fpga->pwrb_io.get_i_buf(i));
+  // }
 
   wrefresh(win_);
 }
 
-void Panel::infoDisplay(Behavior bhv, Mode fsm_mode)  // type = c_main
-{
+// type = c_main
+void Panel::print_mode_main(Behavior bhv, Mode fsm_mode) {
   if (bhv == Behavior::TCP_SLAVE)
     mvwprintw(win_, 2, 1, "Behavior: TCP_SLAVE");
   else if (bhv == Behavior::SET_THETA)
@@ -444,7 +433,7 @@ void Panel::infoDisplay(Behavior bhv, Mode fsm_mode)  // type = c_main
   wrefresh(win_);
 }
 
-void Panel::panelTitle() {
+void Panel::print_title() {
   string tag_(title_.c_str(), title_.c_str() + 3);
   title_.erase(0, 3);
   wattron(win_, COLOR_PAIR(CYAN_PAIR));
@@ -460,7 +449,7 @@ void Panel::panelTitle() {
   wrefresh(win_);
 }
 
-void Panel::resetPanel() {
+void Panel::reset() {
   werase(win_);
   wclear(win_);
   wrefresh(win_);

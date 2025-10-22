@@ -18,12 +18,10 @@ class HipModule {
             NiFpga_Session _fpga_session);
   HipModule() {}
 
-  // ID of Module (F,H)
   std::string label_;
   YAML::Node config_;
   std::vector<Motor> motors_list_;
 
-  // hardware configuration
   ModuleIO_CAN io_;
   std::string CAN_port_;
   bool enable_;
@@ -41,7 +39,6 @@ class HipModule {
   double Motor_F_bias = 0;
   double Motor_H_bias = 0;
 
-  // ModuleIO_CAN
   void load_config();
   void CAN_timeoutCheck();
 };

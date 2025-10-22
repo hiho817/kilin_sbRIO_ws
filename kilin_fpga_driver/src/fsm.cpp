@@ -1,12 +1,11 @@
 #include <fsm.hpp>
 
-ModeFsm::ModeFsm(std::vector<HipModule>* _modules, std::vector<bool>* _pb_state, double* pb_v) {
+ModeFsm::ModeFsm(std::vector<HipModule>* modules, std::vector<bool>* pb_state) {
   workingMode_ = Mode::REST;
   prev_workingMode_ = Mode::REST;
 
-  modules_list_ = _modules;
-  pb_state_ = _pb_state;
-  powerboard_voltage = pb_v;
+  modules_list_ = modules;
+  pb_state_ = pb_state;
 
   hall_calibrated = false;
   hall_calibrate_status = 0;

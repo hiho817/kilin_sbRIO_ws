@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
+#include <array>
 #include <bitset>
 #include <functional>
 #include <iostream>
@@ -29,6 +30,11 @@ struct PwrbCalParam {
 struct PwrbCalParams {
   PwrbCalParam V;
   PwrbCalParam I;
+};
+
+struct PowerBoardBuffers {
+  std::array<double, 12> current_buffer = {0.0};
+  std::array<double, 12> voltage_buffer = {0.0};
 };
 
 class ModuleIO_CAN {
@@ -128,6 +134,8 @@ class PwrbIO {
 
   void set_ni_pwrb(std::vector<bool>* powerboard_state_);
   void get_ni_pwrb_to_buf();
+  void get_pwrb_I_buf(double* I_buf);
+  void get_pwrb_V_buf(double* V_buf);
 
   // calibration parameter loader
   void set_pwrb_cal_params_from_yml(const YAML::Node& factors_node);
@@ -136,8 +144,8 @@ class PwrbIO {
   double get_i_factor(size_t index) const;
   double get_i_offset(size_t index) const;
 
-  double pwrb_I_buf[12] = {0};
-  double pwrb_V_buf[12] = {0};
+  double get_i_buf(size_t index) const;
+  double get_v_buf(size_t index) const;
 
  private:
   NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_digital_;
@@ -151,6 +159,10 @@ class PwrbIO {
   NiFpga_Session fpga_session_;
 
   PwrbCalParams pwrb_cal_params_;
+  PowerBoardBuffers buffers_;
+
+  void set_v_buf_(size_t index, double value);
+  void set_i_buf_(size_t index, double value);
 };
 
 class FpgaHandler {

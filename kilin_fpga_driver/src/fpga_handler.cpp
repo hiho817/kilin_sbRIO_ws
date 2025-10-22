@@ -252,16 +252,14 @@ void PwrbIO::set_ni_pwrb(std::vector<bool>* powerboard_state_) {
 
 void PwrbIO::get_ni_pwrb_to_buf() {
   uint16_t rx_arr[24];
-  set_fpga_status(NiFpga_ReadArrayU16(fpga_session_, NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16_Data,
-                                      rx_arr, NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size_Data));
-
+  set_fpga_status(NiFpga_ReadArrayU16(fpga_session_, NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16_Data, rx_arr,
+                                      NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size_Data));
   for (int i = 0; i < 24; i++) {
-    if (i % 2 == 0)
-      pwrb_I_buf[i / 2] =
-          rx_arr[i] * pwrb_cal_params_.I.factor[i / 2] + pwrb_cal_params_.I.offset[i / 2];
-    if (i % 2 == 1)
-      pwrb_V_buf[(i - 1) / 2] = rx_arr[i] * pwrb_cal_params_.V.factor[(i - 1) / 2] +
-                                pwrb_cal_params_.V.factor[(i - 1) / 2];
+    int i_half = i / 2;
+    if (i % 2 == 1)  // is odd
+      set_v_buf_(i_half, rx_arr[i] * pwrb_cal_params_.V.factor[i_half] + pwrb_cal_params_.V.factor[i_half]);
+    else // is even
+      set_i_buf_(i_half, rx_arr[i] * pwrb_cal_params_.I.factor[i_half] + pwrb_cal_params_.I.offset[i_half]);
   }
 }
 
@@ -279,8 +277,7 @@ void PwrbIO::set_pwrb_cal_params_from_yml(const YAML::Node& factors_node) {
   size_t idx = 0;
   for (const auto& f : factors_node) {
     if (idx >= pwrb_cal_params_.V.factor.size()) {
-      std::cerr << "Warning: More calibration entries in YAML than expected. Ignoring extra."
-                << std::endl;
+      std::cerr << "Warning: More calibration entries in YAML than expected. Ignoring extra." << std::endl;
       break;
     }
 
@@ -321,13 +318,45 @@ double PwrbIO::get_i_offset(size_t index) const {
   return pwrb_cal_params_.I.offset[index];
 }
 
+// Setter for a single voltage value
+void PwrbIO::set_v_buf_(size_t index, double value) {
+  // Bounds checking makes this much safer!
+  if (index >= buffers_.voltage_buffer.size()) {
+    throw std::out_of_range("Voltage buffer index is out of bounds.");
+  }
+  buffers_.voltage_buffer[index] = value;
+}
+
+// Getter for a single voltage value
+double PwrbIO::get_v_buf(size_t index) const {
+  if (index >= buffers_.voltage_buffer.size()) {
+    throw std::out_of_range("Voltage buffer index is out of bounds.");
+  }
+  return buffers_.voltage_buffer[index];
+}
+
+// Setter for a single current value
+void PwrbIO::set_i_buf_(size_t index, double value) {
+  if (index >= buffers_.current_buffer.size()) {
+    throw std::out_of_range("Current buffer index is out of bounds.");
+  }
+  buffers_.current_buffer[index] = value;
+}
+
+// Getter for a single current value
+double PwrbIO::get_i_buf(size_t index) const {
+  if (index >= buffers_.current_buffer.size()) {
+    throw std::out_of_range("Current buffer index is out of bounds.");
+  }
+  return buffers_.current_buffer[index];
+}
+
 FpgaHandler::FpgaHandler() {
   status_ = NiFpga_Initialize();
   pwrb_io = PwrbIO(status_, session);
   important_message("[FPGA Handler] Fpga Initialized");
 
-  set_fpga_status(NiFpga_Open(NiFpga_FPGA_RS485_v1_2_Bitfile, NiFpga_FPGA_RS485_v1_2_Signature,
-                              "RIO0", 0, &session));
+  set_fpga_status(NiFpga_Open(NiFpga_FPGA_RS485_v1_2_Bitfile, NiFpga_FPGA_RS485_v1_2_Signature, "RIO0", 0, &session));
   important_message("[FPGA Handler] Session opened");
 
   set_fpga_status(NiFpga_ReserveIrqContext(session, &irqContext));
@@ -349,10 +378,8 @@ FpgaHandler::~FpgaHandler() {
 void FpgaHandler::set_ni_irq_period(int main_loop_p, int can_loop_p) {
   /* Set up interrupt period (microsecond) */
   /* IRQ 0 */
-  set_fpga_status(
-      NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ0_period_us, main_loop_p));
+  set_fpga_status(NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ0_period_us, main_loop_p));
 
   /* IRQ 1 */
-  set_fpga_status(
-      NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ1_period_us, can_loop_p));
+  set_fpga_status(NiFpga_WriteU32(session, NiFpga_FPGA_RS485_v1_2_ControlU32_IRQ1_period_us, can_loop_p));
 }

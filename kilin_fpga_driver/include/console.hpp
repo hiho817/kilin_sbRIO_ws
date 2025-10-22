@@ -48,10 +48,10 @@ class Panel {
 
   mutex mutex_;
   void infoDisplay();
-  void infoDisplay(FpgaHandler* fpga, bool power_switch, bool signal_switch, bool digital_switch);
-  void infoDisplay(Behavior bhv, Mode fsm_mode);
-  void resetPanel();
-  void panelTitle();
+  void print_pwrb_info(FpgaHandler* fpga, bool power_switch, bool signal_switch, bool digital_switch);
+  void print_mode_main(Behavior bhv, Mode fsm_mode);
+  void reset();
+  void print_title();
 };
 
 class InputPanel {
