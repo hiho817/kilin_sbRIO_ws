@@ -14,8 +14,7 @@
 
 class LimbModule {
  public:
-  LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _status,
-             NiFpga_Session _fpga_session);
+  LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _status, NiFpga_Session _fpga_session);
   LimbModule() {}
 
   // ID of Module (F,H)
@@ -30,6 +29,9 @@ class LimbModule {
   int RS485_timeout_us;
   bool RS485_first_transmit_;
 
+  void Helloworld() { std::cout << "Hello from LimbModule!" << std::endl; }
+
+ private:
   bool RS485_tx_timedout_[2];
   bool RS485_rx_timedout_[2];
   bool RS485_mtr_timedout[2];
@@ -41,13 +43,8 @@ class LimbModule {
   double Motor_F_bias = 0;
   double Motor_H_bias = 0;
 
-  // ModuleIO_CAN
   void load_config();
   void RS485_timeoutCheck();
 };
-
-double deg2rad(double deg);
-Eigen::Vector2d tb2phi(const Eigen::Vector2d& tb);
-Eigen::Vector2d phi2tb(const Eigen::Vector2d& phi);
 
 #endif

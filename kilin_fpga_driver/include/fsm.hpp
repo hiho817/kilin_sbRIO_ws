@@ -26,7 +26,7 @@ class ModeFsm {
 
   Scenario scenario_;
 
-  std::vector<HipModule>* modules_list_;
+  std::vector<HipModule>* hip_module_list_;
   std::vector<bool>* pb_state_;
 
   bool hall_calibrated;

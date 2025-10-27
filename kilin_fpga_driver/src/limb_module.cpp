@@ -26,5 +26,3 @@ void LimbModule::load_config() {
 }
 
 void LimbModule::RS485_timeoutCheck() {}
-
-double deg2rad(double deg) { return deg * M_PI / 180.0; }

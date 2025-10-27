@@ -14,6 +14,7 @@
 #include "fpga_handler.hpp"
 #include "fsm.hpp"
 #include "hip_module.hpp"
+#include "limb_module.hpp"
 
 #ifndef CONFIG_PATH
 #define CONFIG_PATH "/home/admin/kilin_sbRIO_ws/kilin_fpga_driver/config/config.yaml"
@@ -52,7 +53,8 @@ class Kilin {
 
  private:
   /* robot state */
-  std::vector<HipModule> modules_list_;
+  std::vector<HipModule> hip_module_list_;
+  std::vector<LimbModule> limb_modules_list_;
   ModeFsm fsm_;
   bool HALL_CALIBRATED_;
   int modules_num_;

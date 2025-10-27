@@ -49,15 +49,27 @@ Kilin::Kilin() {
   powerboard_state_.push_back(signal_switch_);
   powerboard_state_.push_back(power_switch_);
 
-  ModeFsm fsm(&modules_list_, &powerboard_state_);
+  ModeFsm fsm(&hip_module_list_, &powerboard_state_);
   fsm_ = fsm;
   fsm_.NO_CAN_TIMEDOUT_ERROR_ = &NO_CAN_TIMEDOUT_ERROR_;
   fsm_.NO_SWITCH_TIMEDOUT_ERROR_ = &NO_SWITCH_TIMEDOUT_ERROR_;
 
   load_config_();
-  console_.init(&fpga_, &modules_list_, &powerboard_state_, &fsm_, &main_mtx_);
+  console_.init(&fpga_, &hip_module_list_, &powerboard_state_, &fsm_, &main_mtx_);
 
   fpga_.set_ni_irq_period(main_irq_period_us_, can_irq_period_us_);
+
+  // add one limb module for testing
+  LimbModule limb_module("LimbModule_1", yaml_node_, fpga_.get_fpga_status(), fpga_.session);
+  limb_modules_list_.push_back(limb_module);
+
+  // call limb module hello world
+  limb_modules_list_.at(0).Helloworld();
+
+  // wait until enter key is pressed
+  cout << "Press Enter to start FPGA server..." << endl;
+  cin.get();
+
 }
 
 void Kilin::load_config_() {
@@ -86,7 +98,7 @@ void Kilin::load_config_() {
   for (int i = 0; i < modules_num_; i++) {
     std::string label = yaml_node_["Modules_list"][i].as<std::string>();
     HipModule module(label, yaml_node_, fpga_.get_fpga_status(), fpga_.session);
-    modules_list_.push_back(module);
+    hip_module_list_.push_back(module);
   }
 
   // initialize powerboard calibration parameters
@@ -208,18 +220,18 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
 
 void Kilin::canLoop_() {
   for (int i = 0; i < 4; i++) {
-    if (modules_list_[i].enable_ && powerboard_state_.at(2) == true) {
-      modules_list_[i].io_.CAN_recieve_feedback(&modules_list_[i].rxdata_buffer_[0],
-                                                &modules_list_[i].rxdata_buffer_[1]);
-      modules_list_[i].CAN_timeoutCheck();
+    if (hip_module_list_[i].enable_ && powerboard_state_.at(2) == true) {
+      hip_module_list_[i].io_.CAN_recieve_feedback(&hip_module_list_[i].rxdata_buffer_[0],
+                                                &hip_module_list_[i].rxdata_buffer_[1]);
+      hip_module_list_[i].CAN_timeoutCheck();
 
-      if (modules_list_[i].CAN_module_timedout)
+      if (hip_module_list_[i].CAN_module_timedout)
         timeout_cnt_++;
       else
         timeout_cnt_ = 0;
       if (timeout_cnt_ < max_timeout_cnt_) {
-        modules_list_[i].io_.CAN_send_command(modules_list_[i].txdata_buffer_[0],
-                                              modules_list_[i].txdata_buffer_[1]);
+        hip_module_list_[i].io_.CAN_send_command(hip_module_list_[i].txdata_buffer_[0],
+                                              hip_module_list_[i].txdata_buffer_[1]);
         NO_CAN_TIMEDOUT_ERROR_ = true;
       } else
         NO_CAN_TIMEDOUT_ERROR_ = false;
