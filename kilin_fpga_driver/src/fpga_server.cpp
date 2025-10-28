@@ -59,12 +59,7 @@ Kilin::Kilin() {
 
   fpga_.set_ni_irq_period(main_irq_period_us_, can_irq_period_us_);
 
-  // add one limb module for testing
-  LimbModule limb_module("LimbModule_1", yaml_node_, fpga_.get_fpga_status(), fpga_.session);
-  limb_modules_list_.push_back(limb_module);
 
-  // call limb module hello world
-  limb_modules_list_.at(0).Helloworld();
 
   // wait until enter key is pressed
   cout << "Press Enter to start FPGA server..." << endl;
@@ -94,12 +89,25 @@ void Kilin::load_config_() {
   can_irq_period_us_ = yaml_node_["CANLoop_period_us"].as<int>();
   
   /* initialize hip modules */
-  modules_num_ = yaml_node_["Number_of_modules"].as<int>();
-  for (int i = 0; i < modules_num_; i++) {
+  can_modules_num_ = yaml_node_["Number_of_modules"].as<int>();
+  for (int i = 0; i < can_modules_num_; i++) {
     std::string label = yaml_node_["Modules_list"][i].as<std::string>();
     HipModule module(label, yaml_node_, fpga_.get_fpga_status(), fpga_.session);
     hip_module_list_.push_back(module);
   }
+  cout << "Loaded " << can_modules_num_ << " hip modules from config file." << std::endl;
+
+  // add one limb module for testing
+  int modules_num_ = 4;
+  for (int i = 0; i < modules_num_; i++) {
+    LimbModule limb_module("LimbModule_" + std::to_string(i + 1), yaml_node_, fpga_.get_fpga_status(), fpga_.session, 1);
+    limb_modules_list_.push_back(limb_module);
+    // call limb module hello world
+    limb_modules_list_.at(i).Helloworld();
+  }
+  cout << "Added " << modules_num_ << " limb modules for testing." << std::endl;
+  cout << "press Enter to continue..." << std::endl;
+  cin.get();
 
   // initialize powerboard calibration parameters
   YAML::Node factors_node = yaml_node_["Powerboard_Scaling_Factor"];

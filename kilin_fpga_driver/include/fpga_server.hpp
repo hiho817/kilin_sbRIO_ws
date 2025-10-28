@@ -57,7 +57,7 @@ class Kilin {
   std::vector<LimbModule> limb_modules_list_;
   ModeFsm fsm_;
   bool HALL_CALIBRATED_;
-  int modules_num_;
+  int can_modules_num_;
   int timeout_cnt_;
   int max_timeout_cnt_;
 

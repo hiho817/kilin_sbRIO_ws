@@ -15,6 +15,16 @@ enum class Mode {
   CONTROL,
 };
 
+enum class MotorMode {
+  REST,
+  CONFIG,
+  SET_ZERO,
+  HALL_CALIBRATE,
+  POSITION,
+  VELOCITY,
+  TORQUE,
+};
+
 enum class Behavior { SET_THETA, TCP_SLAVE, CUSTOM_1, CUSTOM_2, CUSTOM_3 };
 
 #endif

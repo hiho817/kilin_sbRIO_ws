@@ -20,7 +20,7 @@ class HipModule {
 
   std::string label_;
   YAML::Node config_;
-  std::vector<Motor> motors_list_;
+  std::vector<Motor_CAN> motors_list_;
 
   ModuleIO_CAN io_;
   std::string CAN_port_;

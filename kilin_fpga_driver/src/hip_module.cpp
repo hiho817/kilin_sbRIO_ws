@@ -55,8 +55,8 @@ HipModule::HipModule(std::string label, YAML::Node config, NiFpga_Status _status
 }
 
 void HipModule::load_config() {
-  Motor motor_f;
-  Motor motor_h;
+  Motor_CAN motor_f;
+  Motor_CAN motor_h;
   CAN_timeout_us = config_["CAN_Timeout_us"].as<int>();
 
   // load configuration from yaml file

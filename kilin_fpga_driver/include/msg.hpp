@@ -8,7 +8,7 @@
 
 #include "mode.hpp"
 
-typedef struct Motor {
+typedef struct Motor_CAN {
   int CAN_ID_;
   int fw_version_;
   double kp_;
@@ -17,7 +17,7 @@ typedef struct Motor {
   double torque_ff_;
   double calibration_bias;
   double kt_;
-} Motor;
+} Motor_CAN;
 
 // transmitted to SBRIO
 typedef struct CAN_txdata {
@@ -40,9 +40,5 @@ typedef struct CAN_rxdata {
   Mode mode_;
 } CAN_rxdata;
 
-class Module {
- public:
-  std::vector<CAN_txdata> txdata_;
-};
 
 #endif

@@ -1,7 +1,7 @@
 #include <fpga_handler.hpp>
 
 ModuleIO_CAN::ModuleIO_CAN(NiFpga_Status status, NiFpga_Session fpga_session, std::string CAN_port_,
-                           std::vector<Motor>* motors_list)
+                           std::vector<Motor_CAN>* motors_list)
     : status_(status), fpga_session_(fpga_session), motors_list_(motors_list) {
   CAN_timeout_us_ = 1000;
   if (CAN_port_ == "MOD1CAN0") {
@@ -350,6 +350,130 @@ double PwrbIO::get_i_buf(size_t index) const {
   }
   return buffers_.current_buffer[index];
 }
+
+// ============================================================================
+// ModuleIO_RS485 Implementation
+// ============================================================================
+
+ModuleIO_RS485::ModuleIO_RS485(NiFpga_Status status, NiFpga_Session fpga_session, int rs485_port)
+    : status_(status),
+      fpga_session_(fpga_session),
+      rs485_port_(rs485_port) {
+  init_registers_();
+}
+
+void ModuleIO_RS485::init_registers_() {
+  // Initialize registers based on the RS485 port (1-4)
+  switch (rs485_port_) {
+    case 1:
+      r_RS485_transmit_ = NiFpga_FPGA_RS485_v1_2_ControlBool_RS485_Transmit1;
+      r_tx_data_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8_RS485_TX_Data1;
+      r_tx_data_size_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8Size_RS485_TX_Data1;
+      r_rx_data_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Data1;
+      r_rx_data_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Data1;
+      r_rx_buf_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Buf1;
+      r_rx_buf_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Buf1;
+      r_checksum_ok_ = NiFpga_FPGA_RS485_v1_2_IndicatorBool_RS485_CKS_OK1;
+      r_rx_finish_ = NiFpga_FPGA_RS485_v1_2_IndicatorBool_RS485_RX_finish1;
+      r_rx_count_ = NiFpga_FPGA_RS485_v1_2_IndicatorI32_RS485_RX_count1;
+      r_tx_count_ = NiFpga_FPGA_RS485_v1_2_IndicatorI32_RS485_TX_count1;
+      break;
+    case 2:
+      r_RS485_transmit_ = NiFpga_FPGA_RS485_v1_2_ControlBool_RS485_Transmit2;
+      r_tx_data_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8_RS485_TX_Data2;
+      r_tx_data_size_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8Size_RS485_TX_Data2;
+      r_rx_data_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Data2;
+      r_rx_data_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Data2;
+      r_rx_buf_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Buf2;
+      r_rx_buf_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Buf2;
+      r_checksum_ok_ = NiFpga_FPGA_RS485_v1_2_IndicatorBool_RS485_CKS_OK2;
+      r_rx_finish_ = NiFpga_FPGA_RS485_v1_2_IndicatorBool_RS485_RX_finish2;
+      r_rx_count_ = NiFpga_FPGA_RS485_v1_2_IndicatorI32_RS485_RX_count2;
+      r_tx_count_ = NiFpga_FPGA_RS485_v1_2_IndicatorI32_RS485_TX_count2;
+      break;
+    case 3:
+      r_RS485_transmit_ = NiFpga_FPGA_RS485_v1_2_ControlBool_RS485_Transmit3;
+      r_tx_data_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8_RS485_TX_Data3;
+      r_tx_data_size_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8Size_RS485_TX_Data3;
+      r_rx_data_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Data3;
+      r_rx_data_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Data3;
+      r_rx_buf_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Buf3;
+      r_rx_buf_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Buf3;
+      r_checksum_ok_ = NiFpga_FPGA_RS485_v1_2_IndicatorBool_RS485_CKS_OK3;
+      r_rx_finish_ = NiFpga_FPGA_RS485_v1_2_IndicatorBool_RS485_RX_finish3;
+      r_rx_count_ = NiFpga_FPGA_RS485_v1_2_IndicatorI32_RS485_RX_count3;
+      r_tx_count_ = NiFpga_FPGA_RS485_v1_2_IndicatorI32_RS485_TX_count3;
+      break;
+    case 4:
+      r_RS485_transmit_ = NiFpga_FPGA_RS485_v1_2_ControlBool_RS485_Transmit4;
+      r_tx_data_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8_RS485_TX_Data4;
+      r_tx_data_size_ = NiFpga_FPGA_RS485_v1_2_ControlArrayU8Size_RS485_TX_Data4;
+      r_rx_data_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Data4;
+      r_rx_data_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Data4;
+      r_rx_buf_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8_RS485_RX_Buf4;
+      r_rx_buf_size_ = NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size_RS485_RX_Buf4;
+      r_checksum_ok_ = NiFpga_FPGA_RS485_v1_2_IndicatorBool_RS485_CKS_OK4;
+      r_rx_finish_ = NiFpga_FPGA_RS485_v1_2_IndicatorBool_RS485_RX_finish4;
+      r_rx_count_ = NiFpga_FPGA_RS485_v1_2_IndicatorI32_RS485_RX_count4;
+      r_tx_count_ = NiFpga_FPGA_RS485_v1_2_IndicatorI32_RS485_TX_count4;
+      break;
+    default:
+      error_message("[RS485] Invalid RS485 port number. Must be 1-4.");
+      break;
+  }
+}
+
+void ModuleIO_RS485::set_ni_RS485_transmit(NiFpga_Bool value) {
+  set_fpga_status(NiFpga_WriteBool(fpga_session_, r_RS485_transmit_, value));
+}
+
+void ModuleIO_RS485::set_ni_tx_data(const uint8_t* tx_data, size_t length) {
+  if (length > r_tx_data_size_) {
+    error_message("[RS485] TX data length exceeds buffer size");
+    length = r_tx_data_size_;
+  }
+  set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_data_, tx_data, length));
+}
+
+void ModuleIO_RS485::get_ni_rx_data(uint8_t* rx_data, size_t* length) {
+  size_t actual_length = r_rx_data_size_;
+  set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_rx_data_, rx_data, actual_length));
+  if (length != nullptr) {
+    *length = actual_length;
+  }
+}
+
+void ModuleIO_RS485::get_ni_rx_buf(uint8_t* rx_buf) {
+  set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_rx_buf_, rx_buf, r_rx_buf_size_));
+}
+
+NiFpga_Bool ModuleIO_RS485::get_ni_checksum_ok() {
+  NiFpga_Bool value;
+  set_fpga_status(NiFpga_ReadBool(fpga_session_, r_checksum_ok_, &value));
+  return value;
+}
+
+NiFpga_Bool ModuleIO_RS485::get_ni_rx_finish() {
+  NiFpga_Bool value;
+  set_fpga_status(NiFpga_ReadBool(fpga_session_, r_rx_finish_, &value));
+  return value;
+}
+
+int32_t ModuleIO_RS485::get_ni_rx_count() {
+  int32_t value;
+  set_fpga_status(NiFpga_ReadI32(fpga_session_, r_rx_count_, &value));
+  return value;
+}
+
+int32_t ModuleIO_RS485::get_ni_tx_count() {
+  int32_t value;
+  set_fpga_status(NiFpga_ReadI32(fpga_session_, r_tx_count_, &value));
+  return value;
+}
+
+// ============================================================================
+// FpgaHandler Implementation
+// ============================================================================
 
 FpgaHandler::FpgaHandler() {
   // init the NiFpga system

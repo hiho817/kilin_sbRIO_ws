@@ -40,7 +40,7 @@ struct PowerBoardBuffers {
 class ModuleIO_CAN {
  public:
   ModuleIO_CAN(NiFpga_Status status_, NiFpga_Session fpga_session_, std::string CAN_port_,
-               std::vector<Motor>* motors_list);
+               std::vector<Motor_CAN>* motors_list);
 
   ModuleIO_CAN() {};
 
@@ -119,7 +119,51 @@ class ModuleIO_CAN {
 
   NiFpga_Status status_;
   NiFpga_Session fpga_session_;
-  std::vector<Motor>* motors_list_;
+  std::vector<Motor_CAN>* motors_list_;
+};
+
+class ModuleIO_RS485 {
+ public:
+  ModuleIO_RS485(NiFpga_Status status_, NiFpga_Session fpga_session_, int rs485_port_);
+  ModuleIO_RS485() {};
+
+  NiFpga_Status get_fpga_status() { return status_; };
+  NiFpga_Status set_fpga_status(const NiFpga_Status newStatus) {
+    return NiFpga_MergeStatus(&status_, newStatus);
+  };
+
+  // RS485 communication functions
+  void set_ni_RS485_transmit(NiFpga_Bool value);
+  void set_ni_tx_data(const uint8_t* tx_data, size_t length);
+  void get_ni_rx_data(uint8_t* rx_data, size_t* length);
+  void get_ni_rx_buf(uint8_t* rx_buf);
+  
+  NiFpga_Bool get_ni_checksum_ok();
+  NiFpga_Bool get_ni_rx_finish();
+  int32_t get_ni_rx_count();
+  int32_t get_ni_tx_count();
+
+ private:
+  NiFpga_Status status_;
+  NiFpga_Session fpga_session_;
+  int rs485_port_;  // 1, 2, 3, or 4
+
+  // Control and indicator registers (set based on port)
+  NiFpga_FPGA_RS485_v1_2_ControlBool r_RS485_transmit_;
+  NiFpga_FPGA_RS485_v1_2_ControlArrayU8 r_tx_data_;
+  NiFpga_FPGA_RS485_v1_2_ControlArrayU8Size r_tx_data_size_;
+  
+  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8 r_rx_data_;
+  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size r_rx_data_size_;
+  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8 r_rx_buf_;
+  NiFpga_FPGA_RS485_v1_2_IndicatorArrayU8Size r_rx_buf_size_;
+  
+  NiFpga_FPGA_RS485_v1_2_IndicatorBool r_checksum_ok_;
+  NiFpga_FPGA_RS485_v1_2_IndicatorBool r_rx_finish_;
+  NiFpga_FPGA_RS485_v1_2_IndicatorI32 r_rx_count_;
+  NiFpga_FPGA_RS485_v1_2_IndicatorI32 r_tx_count_;
+
+  void init_registers_();
 };
 
 class PwrbIO {
