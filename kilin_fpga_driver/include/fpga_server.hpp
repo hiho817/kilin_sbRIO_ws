@@ -79,6 +79,7 @@ class Kilin {
                  core::Publisher<motor_msg::MotorStateStamped>& state_pub_);
 
   void canLoop_();
+  void rs485Loop_();
 };
 
 #endif

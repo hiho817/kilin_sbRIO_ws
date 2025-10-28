@@ -131,6 +131,7 @@ class ModuleIO_RS485 {
   NiFpga_Status set_fpga_status(const NiFpga_Status newStatus) {
     return NiFpga_MergeStatus(&status_, newStatus);
   };
+  NiFpga_Status get_fpga_status() { return status_; }
 
   // RS485 communication functions
   void set_ni_RS485_transmit(NiFpga_Bool value);
@@ -142,6 +143,11 @@ class ModuleIO_RS485 {
   NiFpga_Bool get_ni_rx_finish();
   int32_t get_ni_rx_count();
   int32_t get_ni_tx_count();
+  
+  // Buffer size getters
+  size_t get_ni_tx_data_size() const { return r_tx_data_size_; }
+  size_t get_ni_rx_data_size() const { return r_rx_data_size_; }
+  size_t get_ni_rx_buf_size() const { return r_rx_buf_size_; }
 
  private:
   NiFpga_Status status_;

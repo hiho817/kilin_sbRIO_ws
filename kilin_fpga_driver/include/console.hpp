@@ -19,6 +19,8 @@
 
 #include "fsm.hpp"
 #include "hip_module.hpp"
+#include "limb_module.hpp"
+
 #undef OK
 
 using namespace std;
@@ -50,6 +52,8 @@ class Panel {
   void infoDisplay();
   void print_pwrb_info(FpgaHandler* fpga, bool power_switch, bool signal_switch, bool digital_switch);
   void print_mode_main(Behavior bhv, Mode fsm_mode);
+  void print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods);
+
   void reset();
   void print_title();
 };
@@ -85,7 +89,7 @@ class Console {
  public:
   Console() {}
 
-  void init(FpgaHandler* fpga_, vector<HipModule>* mods_, std::vector<bool>* pb_state_,
+  void init(FpgaHandler* fpga_, vector<HipModule>* mods_, vector<LimbModule>* rs485_mods, std::vector<bool>* pb_state_,
             ModeFsm* fsm_, std::mutex* mtx_);
   void refreshWindow();
 
@@ -107,6 +111,7 @@ class Console {
 
   HipModule* modL_ptr_;
   HipModule* modR_ptr_;
+  vector<LimbModule>* limb_modules_ptr_;
 
   std::mutex* main_mtx_;
   std::vector<bool>* powerboard_state_;

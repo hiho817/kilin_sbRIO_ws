@@ -12,35 +12,36 @@
 #include "fpga_handler.hpp"
 #include "msg.hpp"
 
-struct RS485_txdata_buf {
-  uint8_t Header;
-  uint8_t CMD1;
-  uint8_t SUBCMD1;
-  uint16_t Data1;
-  uint8_t CMD2;
-  uint8_t SUBCMD2;
-  uint16_t Data2;
-  uint8_t Checksum1;
-  uint8_t Checksum2;
+// TX Data Buffer with union for easy byte access
+union RS485_txdata_buf {
+  struct __attribute__((packed)) {
+    uint8_t CMD1;       // Byte 0
+    uint8_t SUBCMD1;    // Byte 1
+    uint32_t Data1;     // Bytes 2-5
+    uint8_t CMD2;       // Byte 6
+    uint8_t SUBCMD2;    // Byte 7
+    uint32_t Data2;     // Bytes 8-11
+  };
+  uint8_t bytes[12];    // Raw byte array access
 };
-// Byte		|   0~4  |    5    |    6    |  7~10   |   11    |   12    |  13~16  |   17    |   18    |
-// Function	| Header |   CMD1  | SUBCMD1 |  Data1  |   CMD2  | SUBCMD2 |  Data2  |Checksum1|Checksum2|
+// Total: 12 bytes (packed, no padding)
+// FPGA driver adds: Header (5 bytes) + Payload (12 bytes) + Checksum (2 bytes) = 19 bytes total
 
-struct RS485_rxdata_buf {
-  uint8_t Header;
-  uint8_t CMD1;
-  int32_t POS1;
-  uint8_t STAT1;
-  int32_t I1;
-  uint8_t CMD2;
-  int32_t POS2;
-  uint8_t STAT2;
-  int32_t I2;
-  uint8_t Checksum1;
-  uint8_t Checksum2;
+// RX Data Buffer with union for easy byte access
+union RS485_rxdata_buf {
+  struct __attribute__((packed)) {
+    uint8_t CMD1;       // Byte 0
+    uint8_t SUBCMD1;    // Byte 1
+    uint32_t Data1;     // Bytes 2-5
+    uint8_t CMD2;       // Byte 6
+    uint8_t SUBCMD2;    // Byte 7
+    uint32_t Data2;     // Bytes 8-11
+  };
+  uint8_t bytes[12];    // Raw byte array access
 };
-// Byte		|   0~4  |    5    |    6    |  7~10   |   11    |   12    |  13~16  |   17    |   18    |
-// Function	| Header |   CMD1  | SUBCMD1 |  Data1  |   CMD2  | SUBCMD2 |  Data2  |Checksum1|Checksum2|
+// Total: 12 bytes (packed, no padding)
+// Byte		  |   0~4  |  5   | 6~9  |   10  | 11~14 |  15  | 16~19 |   20  |  21~24  |   25|   26    
+// Function	| Header | CMD1 | POS1 | STAT1 |   I1  | CMD2 | POS2  | STAT2 |    I2   |Checksum1|Checksum2|
 
 struct Motor_RS485 {
   int id_;
@@ -87,21 +88,22 @@ class LimbModule {
   
   void Helloworld() { std::cout << "Hello from LimbModule!" << std::endl; }
 
- private:
+  // Debug access (public for console display)
   ModuleIO_RS485 io_;
-  NiFpga_Status status_;
-  NiFpga_Session fpga_session_;
   int rs485_port_;
-  
   RS485_txdata_buf txdata_buffer_;
   RS485_rxdata_buf rxdata_buffer_;
-  
-  // Timeout management
-  int RS485_timeout_us_;
   bool RS485_tx_timedout_[2];  // [0] for steering, [1] for wheel
   bool RS485_rx_timedout_[2];
   bool RS485_mtr_timedout[2];
   bool RS485_module_timedout;
+
+ private:
+  NiFpga_Status status_;
+  NiFpga_Session fpga_session_;
+  
+  // Timeout management
+  int RS485_timeout_us_;
   
   // Helper methods
   void load_config();
@@ -117,9 +119,8 @@ class LimbModule {
 // below is the RS485 communication protocol reference from the motor controller code
 /*	Packet TX Information (from the motor controllers point of view)
 
-        Byte		|   0~4  |    5    |   6~9   |    10   |  11~14  |    15   |   16~19 |    20   |  21~24  |   25
-   |   26    | Function	| Header |   CMD1  |   POS1  |  STAT1  |    I1   |   CMD2  |   POS2  |  STAT2  |    I2
-   |Checksum1|Checksum2|
+Byte		  |   0~4  |  5   | 6~9  |   10  | 11~14 |  15  | 16~19 |   20  |  21~24  |   25|   26    
+Function	| Header | CMD1 | POS1 | STAT1 |   I1  | CMD2 | POS2  | STAT2 |    I2   |Checksum1|Checksum2|
 
         Byte0~4		: Header, 0xFF*5
         ------------------------------------------------------------------

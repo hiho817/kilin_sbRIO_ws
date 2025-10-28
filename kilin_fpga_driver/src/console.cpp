@@ -9,12 +9,14 @@ using namespace std;
 mutex cons_mtx_;
 int refresh_flag;
 
-void Console::init(FpgaHandler* fpga, vector<HipModule>* mods_, std::vector<bool>* pb_state_ptr_, ModeFsm* fsm_ptr_,
-                   std::mutex* mtx_ptr_) {
+void Console::init(FpgaHandler* fpga, vector<HipModule>* mods_, vector<LimbModule>* rs485_mods,
+                   std::vector<bool>* pb_state_ptr_, ModeFsm* fsm_ptr_, std::mutex* mtx_ptr_) {
   fpga_ = fpga;
 
   modL_ptr_ = &mods_->at(0);
   modR_ptr_ = &mods_->at(1);
+
+  limb_modules_ptr_ = rs485_mods;
 
   setlocale(LC_ALL, "");
   initscr();
@@ -49,6 +51,7 @@ void Console::refreshWindow() {
   Panel p_cmain_("[F] FPGA Server ", "c_main", lm_null, 1, 1, 8, 40, true);
   Panel p_modL_("[L] L_Module ", "module", modL_ptr_, 41, 1, (term_max_y_ - 2) / 2 - 1, 60, true);
   Panel p_modR_("[R] R_Module ", "module", modR_ptr_, 41, (term_max_y_) / 2, (term_max_y_ - 2) / 2 - 1, 60, true);
+  Panel p_mod_test_RS485("[T] Test Limb ", "RS485_test", lm_null, 95, 1, term_max_y_, 100, true);
   // Panel p_modS1_("[1] Steering1 ", "module", modL_ptr_, 93, 1, (term_max_y_ - 2) / 2 - 1, 60,
   // true);
 
@@ -62,6 +65,7 @@ void Console::refreshWindow() {
     p_cmain_.print_mode_main(Behavior::TCP_SLAVE, fsm_->workingMode_);
     p_modL_.infoDisplay();
     p_modR_.infoDisplay();
+    p_mod_test_RS485.print_limb_test(fpga_, limb_modules_ptr_);
     // p_modS1_.infoDisplay();
     cons_mtx_.unlock();
 
@@ -379,6 +383,80 @@ void Panel::infoDisplay()  // type = module
   wrefresh(win_);
 }
 
+void Panel::print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods) {
+  mvwprintw(win_, 1, 1, "RS485 Debug Panel ----------------");
+  
+  int line = 2;
+  for (size_t i = 0; i < limb_mods->size(); i++) {
+    LimbModule& module = limb_mods->at(i);
+    
+    // Module header with communication status
+    mvwprintw(win_, line++, 1, "[%zu] %s %s Port:%d %s", i, module.label_.c_str(),
+              module.rs485_port_,
+              module.io_.get_fpga_status() ? "FPGA[OK]" : "FPGA[ERR]",
+              module.is_communication_ok() ? "[OK]" : "[TIMEOUT]");
+    
+    // RS485 Communication counters and buffer sizes
+    mvwprintw(win_, line++, 3, "TX_cnt:%d RX_cnt:%d CKS_OK:%d RX_fin:%d",
+              module.io_.get_ni_tx_count(),
+              module.io_.get_ni_rx_count(),
+              module.io_.get_ni_checksum_ok(),
+              module.io_.get_ni_rx_finish());
+    
+    // Buffer sizes from FPGA
+    mvwprintw(win_, line++, 3, "BufSize: TX:%zu RX:%zu RXBuf:%zu limbTXBuf:%zu",
+              module.io_.get_ni_tx_data_size(),
+              module.io_.get_ni_rx_data_size(),
+              module.io_.get_ni_rx_buf_size(),
+              sizeof(module.txdata_buffer_));
+    
+    // TX Buffer structure breakdown (FPGA driver adds header/checksum)
+    mvwprintw(win_, line++, 3, "TX: C1:%02X SC1:%02X D1:%08X C2:%02X SC2:%02X D2:%08X",
+              module.txdata_buffer_.CMD1,
+              module.txdata_buffer_.SUBCMD1,
+              module.txdata_buffer_.Data1,
+              module.txdata_buffer_.CMD2,
+              module.txdata_buffer_.SUBCMD2,
+              module.txdata_buffer_.Data2);
+    
+    // RX Buffer structure breakdown (FPGA driver strips header/checksum)
+    mvwprintw(win_, line++, 3, "RX: C1:%02X SC1:%02X D1:%08X C2:%02X SC2:%02X D2:%08X",
+              module.rxdata_buffer_.CMD1,
+              module.rxdata_buffer_.SUBCMD1,
+              module.rxdata_buffer_.Data1,
+              module.rxdata_buffer_.CMD2,
+              module.rxdata_buffer_.SUBCMD2,
+              module.rxdata_buffer_.Data2);
+    
+    // Motor states
+    mvwprintw(win_, line++, 3, "Steer: Pos:%7.3f Vel:%7.3f Trq:%6.3f M:%d", 
+              module.get_steering_position(),
+              module.get_steering_velocity(),
+              module.get_steering_torque(),
+              (int)module.steering_motor.mode_);
+    
+    mvwprintw(win_, line++, 3, "Wheel: Pos:%7.3f Vel:%7.3f Trq:%6.3f M:%d",
+              module.get_wheel_position(),
+              module.get_wheel_velocity(), 
+              module.get_wheel_torque(),
+              (int)module.wheel_motor.mode_);
+    
+    // Timeout flags
+    mvwprintw(win_, line++, 3, "TO: TX[%d,%d] RX[%d,%d] Mtr[%d,%d] Mod:%d",
+              module.RS485_tx_timedout_[0], module.RS485_tx_timedout_[1],
+              module.RS485_rx_timedout_[0], module.RS485_rx_timedout_[1],
+              module.RS485_mtr_timedout[0], module.RS485_mtr_timedout[1],
+              module.RS485_module_timedout);
+    
+    // Add separator
+    if (i < limb_mods->size() - 1 && i < 1) {
+      mvwprintw(win_, line++, 1, "----------------------------------------------------");
+    }
+  }
+
+  wrefresh(win_);
+}
+
 // type = power
 void Panel::print_pwrb_info(FpgaHandler* fpga, bool digital_switch, bool signal_switch, bool power_switch) {
   mvwprintw(win_, 2, 1, "HARDWARE POWER SWITCH ----------------");
@@ -400,7 +478,8 @@ void Panel::print_pwrb_info(FpgaHandler* fpga, bool digital_switch, bool signal_
   mvwprintw(win_, 18, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(11), fpga->pwrb_io.get_i_buf(11));
 
   // for (int i = 0; i < 12; ++i) {
-  //   mvwprintw(win_, 7 + i, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(i), fpga->pwrb_io.get_i_buf(i));
+  //   mvwprintw(win_, 7 + i, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(i),
+  //   fpga->pwrb_io.get_i_buf(i));
   // }
 
   wrefresh(win_);

@@ -429,7 +429,9 @@ void ModuleIO_RS485::set_ni_RS485_transmit(NiFpga_Bool value) {
 
 void ModuleIO_RS485::set_ni_tx_data(const uint8_t* tx_data, size_t length) {
   if (length > r_tx_data_size_) {
-    error_message("[RS485] TX data length exceeds buffer size");
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "[RS485] TX data length exceeds buffer size (%zu > %zu). Truncating to buffer size.", length, r_tx_data_size_);
+    error_message(buffer);
     length = r_tx_data_size_;
   }
   set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_data_, tx_data, length));
