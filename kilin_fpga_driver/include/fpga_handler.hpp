@@ -131,8 +131,6 @@ class ModuleIO_RS485 {
   NiFpga_Status set_fpga_status(const NiFpga_Status newStatus) {
     return NiFpga_MergeStatus(&status_, newStatus);
   };
-  NiFpga_Status get_fpga_status() { return status_; }
-
   // RS485 communication functions
   void set_ni_RS485_transmit(NiFpga_Bool value);
   void set_ni_tx_data(const uint8_t* tx_data, size_t length);

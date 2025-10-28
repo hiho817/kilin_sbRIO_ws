@@ -25,21 +25,24 @@ union RS485_txdata_buf {
   uint8_t bytes[12];    // Raw byte array access
 };
 // Total: 12 bytes (packed, no padding)
-// FPGA driver adds: Header (5 bytes) + Payload (12 bytes) + Checksum (2 bytes) = 19 bytes total
 
 // RX Data Buffer with union for easy byte access
+// Protocol: CMD1 | POS1(4 bytes) | STAT1 | I1(4 bytes) | CMD2 | POS2(4 bytes) | STAT2 | I2(4 bytes)
 union RS485_rxdata_buf {
   struct __attribute__((packed)) {
-    uint8_t CMD1;       // Byte 0
-    uint8_t SUBCMD1;    // Byte 1
-    uint32_t Data1;     // Bytes 2-5
-    uint8_t CMD2;       // Byte 6
-    uint8_t SUBCMD2;    // Byte 7
-    uint32_t Data2;     // Bytes 8-11
+    uint8_t CMD1;       // Byte 0: RX CMD/Version for steering motor
+    int32_t POS1;       // Bytes 1-4: Position for steering motor
+    uint8_t STAT1;      // Byte 5: Status for steering motor
+    int32_t I1;         // Bytes 6-9: Current of steering motor
+    uint8_t CMD2;       // Byte 10: RX CMD/Version for wheel hub motor
+    int32_t POS2;       // Bytes 11-14: Position for wheel hub motor
+    uint8_t STAT2;      // Byte 15: Status for wheel hub motor
+    int32_t I2;         // Bytes 16-19: Current of wheel hub motor
   };
-  uint8_t bytes[12];    // Raw byte array access
+  uint8_t bytes[20];    // Raw byte array access
 };
-// Total: 12 bytes (packed, no padding)
+// Total: 20 bytes (packed, no padding)
+// FPGA driver adds: Header (5 bytes) + Payload (20 bytes) + Checksum (2 bytes) = 27 bytes total
 // Byte		  |   0~4  |  5   | 6~9  |   10  | 11~14 |  15  | 16~19 |   20  |  21~24  |   25|   26    
 // Function	| Header | CMD1 | POS1 | STAT1 |   I1  | CMD2 | POS2  | STAT2 |    I2   |Checksum1|Checksum2|
 

@@ -154,19 +154,30 @@ void LimbModule::unpack_rx_buffer() {
   // FPGA driver verifies header and checksum before passing data to application
   
   // Unpack steering motor data (Motor 1)
-  // CMD1 contains the mode/command echo
+  // CMD1 contains firmware version (bits 4-6) and command echo (bits 0-3)
   steering_motor.mode_ = static_cast<MotorMode>(rxdata_buffer_.CMD1 & 0x0F);
   
-  // Data1 contains position, velocity, or current depending on the mode
-  // For now, treat Data1 as position feedback
-  steering_motor.position_ = static_cast<double>(static_cast<int32_t>(rxdata_buffer_.Data1)) / 100.0;
+  // POS1 contains position feedback (scaled by 100)
+  steering_motor.position_ = static_cast<double>(rxdata_buffer_.POS1) / 100.0;
   
-  // SUBCMD1 could contain status information
-  // rxdata_buffer_.SUBCMD1 contains status flags if needed
+  // STAT1 contains hall status (bits 4-5) and system state (bits 0-3)
+  // uint8_t steering_status = rxdata_buffer_.STAT1;
+  
+  // I1 contains current feedback (scaled by 100)
+  // steering_motor.torque_ = static_cast<double>(rxdata_buffer_.I1) / 100.0;
   
   // Unpack wheel motor data (Motor 2)
+  // CMD2 contains firmware version (bits 4-6) and command echo (bits 0-3)
   wheel_motor.mode_ = static_cast<MotorMode>(rxdata_buffer_.CMD2 & 0x0F);
-  wheel_motor.position_ = static_cast<double>(static_cast<int32_t>(rxdata_buffer_.Data2)) / 100.0;
+  
+  // POS2 contains position feedback (scaled by 100)
+  wheel_motor.position_ = static_cast<double>(rxdata_buffer_.POS2) / 100.0;
+  
+  // STAT2 contains hall status (bits 4-5) and system state (bits 0-3)
+  // uint8_t wheel_status = rxdata_buffer_.STAT2;
+  
+  // I2 contains current feedback (scaled by 100)
+  // wheel_motor.torque_ = static_cast<double>(rxdata_buffer_.I2) / 100.0;
   
   // Clear timeout flags on successful communication
   RS485_module_timedout = false;
@@ -185,19 +196,20 @@ void LimbModule::send_motor_commands() {
   // Send via RS485 using union's byte array
   io_.set_ni_tx_data(txdata_buffer_.bytes, sizeof(txdata_buffer_));
   
-  // Trigger transmission
+  // Trigger transmission - toggle the signal
   io_.set_ni_RS485_transmit(NiFpga_True);
+  io_.set_ni_RS485_transmit(NiFpga_False);
   
   // Debug: Print first transmission
-  // static bool first_tx = true;
-  // if (first_tx) {
-  //   std::cout << "[" << label_ << "] First TX: ";
-  //   for (size_t i = 0; i < 10; i++) {
-  //     printf("%02X ", tx_bytes[i]);
-  //   }
-  //   std::cout << std::endl;
-  //   first_tx = false;
-  // }
+  static bool first_tx = true;
+  if (first_tx) {
+    std::cout << "[" << label_ << "] First TX: ";
+    for (size_t i = 0; i < sizeof(txdata_buffer_); i++) {
+      printf("%02X ", txdata_buffer_.bytes[i]);
+    }
+    std::cout << std::endl;
+    first_tx = false;
+  }
 }
 
 void LimbModule::receive_motor_feedback() {
@@ -217,15 +229,16 @@ void LimbModule::receive_motor_feedback() {
   io_.get_ni_rx_data(rxdata_buffer_.bytes, &length);
   
   // Debug: Print first reception
-  // static bool first_rx = true;
-  // if (first_rx) {
-  //   std::cout << "[" << label_ << "] First RX: ";
-  //   for (size_t i = 0; i < 10; i++) {
-  //     printf("%02X ", rx_bytes[i]);
-  //   }
-  //   std::cout << " len=" << length << std::endl;
-  //   first_rx = false;
-  // }
+  static bool first_rx = true;
+  if (first_rx) {
+    std::cout << "[" << label_ << "] First RX: len=" << length << " expected=" << sizeof(rxdata_buffer_) << std::endl;
+    std::cout << "  Bytes: ";
+    for (size_t i = 0; i < length; i++) {
+      printf("%02X ", rxdata_buffer_.bytes[i]);
+    }
+    std::cout << std::endl;
+    first_rx = false;
+  }
   
   // Unpack the buffer
   unpack_rx_buffer();

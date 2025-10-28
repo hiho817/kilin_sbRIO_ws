@@ -384,73 +384,55 @@ void Panel::infoDisplay()  // type = module
 }
 
 void Panel::print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods) {
-  mvwprintw(win_, 1, 1, "RS485 Debug Panel ----------------");
+  mvwprintw(win_, 1, 1, "================================== RS485 Debug Panel ==================================");
   
   int line = 2;
   for (size_t i = 0; i < limb_mods->size(); i++) {
     LimbModule& module = limb_mods->at(i);
     
     // Module header with communication status
-    mvwprintw(win_, line++, 1, "[%zu] %s %s Port:%d %s", i, module.label_.c_str(),
+    mvwprintw(win_, line++, 1, ">> Module [%zu]: %s  |  Port:%d  |  Status:%s  |  FPGA:%s", i, 
+              module.label_.c_str(),
               module.rs485_port_,
-              module.io_.get_fpga_status() ? "FPGA[OK]" : "FPGA[ERR]",
-              module.is_communication_ok() ? "[OK]" : "[TIMEOUT]");
+              module.is_communication_ok() ? "OK     " : "TIMEOUT",
+              module.io_.get_fpga_status() ? "OK" : "ERR");
     
-    // RS485 Communication counters and buffer sizes
-    mvwprintw(win_, line++, 3, "TX_cnt:%d RX_cnt:%d CKS_OK:%d RX_fin:%d",
+    // Communication statistics and buffer sizes on one line
+    mvwprintw(win_, line++, 1, "   TX:%d RX:%d CKS:%d RXFin:%d | BufSz: TX=%zu RX=%zu RXBuf=%zu App=%zu",
               module.io_.get_ni_tx_count(),
               module.io_.get_ni_rx_count(),
               module.io_.get_ni_checksum_ok(),
-              module.io_.get_ni_rx_finish());
-    
-    // Buffer sizes from FPGA
-    mvwprintw(win_, line++, 3, "BufSize: TX:%zu RX:%zu RXBuf:%zu limbTXBuf:%zu",
+              module.io_.get_ni_rx_finish(),
               module.io_.get_ni_tx_data_size(),
               module.io_.get_ni_rx_data_size(),
               module.io_.get_ni_rx_buf_size(),
               sizeof(module.txdata_buffer_));
     
-    // TX Buffer structure breakdown (FPGA driver adds header/checksum)
-    mvwprintw(win_, line++, 3, "TX: C1:%02X SC1:%02X D1:%08X C2:%02X SC2:%02X D2:%08X",
-              module.txdata_buffer_.CMD1,
-              module.txdata_buffer_.SUBCMD1,
-              module.txdata_buffer_.Data1,
-              module.txdata_buffer_.CMD2,
-              module.txdata_buffer_.SUBCMD2,
-              module.txdata_buffer_.Data2);
+    // TX and RX Buffer on same lines (compact)
+    mvwprintw(win_, line++, 1, "   TX> M1: %02X %02X %08X | M2: %02X %02X %08X",
+              module.txdata_buffer_.CMD1, module.txdata_buffer_.SUBCMD1, module.txdata_buffer_.Data1,
+              module.txdata_buffer_.CMD2, module.txdata_buffer_.SUBCMD2, module.txdata_buffer_.Data2);
     
-    // RX Buffer structure breakdown (FPGA driver strips header/checksum)
-    mvwprintw(win_, line++, 3, "RX: C1:%02X SC1:%02X D1:%08X C2:%02X SC2:%02X D2:%08X",
-              module.rxdata_buffer_.CMD1,
-              module.rxdata_buffer_.SUBCMD1,
-              module.rxdata_buffer_.Data1,
-              module.rxdata_buffer_.CMD2,
-              module.rxdata_buffer_.SUBCMD2,
-              module.rxdata_buffer_.Data2);
+    mvwprintw(win_, line++, 1, "   RX> M1: %02X %08X %02X %08X | M2: %02X %08X %02X %08X",
+              module.rxdata_buffer_.CMD1, module.rxdata_buffer_.POS1, module.rxdata_buffer_.STAT1, module.rxdata_buffer_.I1,
+              module.rxdata_buffer_.CMD2, module.rxdata_buffer_.POS2, module.rxdata_buffer_.STAT2, module.rxdata_buffer_.I2);
     
-    // Motor states
-    mvwprintw(win_, line++, 3, "Steer: Pos:%7.3f Vel:%7.3f Trq:%6.3f M:%d", 
-              module.get_steering_position(),
-              module.get_steering_velocity(),
-              module.get_steering_torque(),
-              (int)module.steering_motor.mode_);
+    // Motor states (decoded) - compact
+    mvwprintw(win_, line++, 1, "   Steer: P=%7.3f V=%7.3f T=%6.3f M=%d", 
+          module.get_steering_position(), module.get_steering_velocity(), module.get_steering_torque(), (int)module.steering_motor.mode_);
+    mvwprintw(win_, line++, 1, "   Wheel: P=%7.3f V=%7.3f T=%6.3f M=%d",
+          module.get_wheel_position(), module.get_wheel_velocity(), module.get_wheel_torque(), (int)module.wheel_motor.mode_);
     
-    mvwprintw(win_, line++, 3, "Wheel: Pos:%7.3f Vel:%7.3f Trq:%6.3f M:%d",
-              module.get_wheel_position(),
-              module.get_wheel_velocity(), 
-              module.get_wheel_torque(),
-              (int)module.wheel_motor.mode_);
-    
-    // Timeout flags
-    mvwprintw(win_, line++, 3, "TO: TX[%d,%d] RX[%d,%d] Mtr[%d,%d] Mod:%d",
+    // Timeout flags - compact
+    mvwprintw(win_, line++, 1, "   Timeout> TX:[%d,%d] RX:[%d,%d] Mtr:[%d,%d] Mod:%d",
               module.RS485_tx_timedout_[0], module.RS485_tx_timedout_[1],
               module.RS485_rx_timedout_[0], module.RS485_rx_timedout_[1],
               module.RS485_mtr_timedout[0], module.RS485_mtr_timedout[1],
               module.RS485_module_timedout);
     
-    // Add separator
-    if (i < limb_mods->size() - 1 && i < 1) {
-      mvwprintw(win_, line++, 1, "----------------------------------------------------");
+    // Module separator (compact)
+    if (i < limb_mods->size() - 1) {
+      mvwprintw(win_, line++, 1, "   -------------------------------------------------------------------------------");
     }
   }
 
