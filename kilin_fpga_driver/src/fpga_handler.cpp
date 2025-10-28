@@ -352,12 +352,16 @@ double PwrbIO::get_i_buf(size_t index) const {
 }
 
 FpgaHandler::FpgaHandler() {
+  // init the NiFpga system
   status_ = NiFpga_Initialize();
-  pwrb_io = PwrbIO(status_, session);
   important_message("[FPGA Handler] Fpga Initialized");
 
+  // init the session variable
   set_fpga_status(NiFpga_Open(NiFpga_FPGA_RS485_v1_2_Bitfile, NiFpga_FPGA_RS485_v1_2_Signature, "RIO0", 0, &session));
   important_message("[FPGA Handler] Session opened");
+
+  pwrb_io = PwrbIO(status_, session);
+  important_message("[FPGA Handler] PowerBoard I/O Initialized");
 
   set_fpga_status(NiFpga_ReserveIrqContext(session, &irqContext));
   important_message("[FPGA Handler] IRQ reserved");
