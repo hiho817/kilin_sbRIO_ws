@@ -23,7 +23,7 @@
 /**
  * The signature of the FPGA bitfile.
  */
-static const char* const NiFpga_FPGA_RS485_v1_2_Signature = "5A902733E29BC8B2A01BD9FE9D434A89";
+static const char* const NiFpga_FPGA_RS485_v1_2_Signature = "F7868B107A2FC233CDE9829EEDA81707";
 
 #if NiFpga_Cpp
 extern "C"
