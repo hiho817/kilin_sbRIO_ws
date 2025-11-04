@@ -9,14 +9,14 @@ using namespace std;
 mutex cons_mtx_;
 int refresh_flag;
 
-void Console::init(FpgaHandler* fpga, vector<HipModule>* mods_, vector<LimbModule>* rs485_mods,
+void Console::init(FpgaHandler* fpga, vector<HipModule>* hip_mods, vector<LimbModule>* limb_mods,
                    std::vector<bool>* pb_state_ptr_, ModeFsm* fsm_ptr_, std::mutex* mtx_ptr_) {
   fpga_ = fpga;
 
-  modL_ptr_ = &mods_->at(0);
-  modR_ptr_ = &mods_->at(1);
+  modL_ptr_ = &hip_mods->at(0);
+  modR_ptr_ = &hip_mods->at(1);
 
-  limb_modules_ptr_ = rs485_mods;
+  limb_modules_ptr_ = limb_mods;
 
   setlocale(LC_ALL, "");
   initscr();
@@ -27,7 +27,7 @@ void Console::init(FpgaHandler* fpga, vector<HipModule>* mods_, vector<LimbModul
   init_pair(CYAN_PAIR, COLOR_CYAN, COLOR_BLACK);
 
   frontend_rate_ = 3;
-  input_panel_.init(mods_, &if_resetPanel, term_max_x_, term_max_y_);
+  input_panel_.init(hip_mods, limb_modules_ptr_, &if_resetPanel, term_max_x_, term_max_y_);
 
   input_panel_.main_mtx_ = mtx_ptr_;
   input_panel_.powerboard_state_ = pb_state_ptr_;
@@ -73,11 +73,13 @@ void Console::refreshWindow() {
   }
 }
 
-void InputPanel::init(vector<HipModule>* mods_, bool* if_resetPanel, int term_max_x, int term_max_y) {
+void InputPanel::init(vector<HipModule>* hip_mods, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y) {
   win_ = newwin(3, term_max_x - 1, term_max_y - 3, 1);
 
-  modL_ptr_ = &mods_->at(0);
-  modR_ptr_ = &mods_->at(1);
+  modL_ptr_ = &hip_mods->at(0);
+  modR_ptr_ = &hip_mods->at(1);
+
+  limb_modules_ptr_ = limb_mods;
 
   thread = new std::thread(&InputPanel::inputHandler, this, win_, std::ref(mutex_));
 }
@@ -100,6 +102,11 @@ void InputPanel::inputHandler(WINDOW* win_, std::mutex& input_mutex) {
         refresh_flag = 1;
         refresh();
       }
+      // if (ch == 'R') {
+      //   for (size_t i = 0; i < limb_modules_ptr_->size(); i++) {
+      //       limb_modules_ptr_->at(i).update_motors();
+      //   }
+      // }
 
     } while (ch != ':');
 
@@ -391,11 +398,23 @@ void Panel::print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods) {
     LimbModule& module = limb_mods->at(i);
     
     // Module header with communication status
-    mvwprintw(win_, line++, 1, ">> Module [%zu]: %s  |  Port:%d  |  Status:%s  |  FPGA:%s", i, 
+    mvwprintw(win_, line++, 1, ">> Module [%zu]: %s  |  Port:%d  |  Status:%s  |  FPGA:%s (Main:%d)", i, 
               module.label_.c_str(),
               module.rs485_port_,
               module.is_communication_ok() ? "OK     " : "TIMEOUT",
-              module.io_.get_fpga_status() ? "OK" : "ERR");
+              module.io_.get_fpga_status() ? "ERR" : "OK",
+              module.io_.get_fpga_status());
+    
+    // Operation-level status codes (detailed error tracking)
+    mvwprintw(win_, line++, 1, "   OpStat> TX:%d RX:%d RXBuf:%d Xmit:%d CKS:%d RXFin:%d RXCnt:%d TXCnt:%d",
+              module.io_.get_prev_tx_data_status(),
+              module.io_.get_prev_rx_data_status(),
+              module.io_.get_prev_rx_buf_status(),
+              module.io_.get_prev_transmit_status(),
+              module.io_.get_prev_checksum_status(),
+              module.io_.get_prev_rx_finish_status(),
+              module.io_.get_prev_rx_count_status(),
+              module.io_.get_prev_tx_count_status());
     
     // Communication statistics and buffer sizes on one line
     mvwprintw(win_, line++, 1, "   TX:%d RX:%d CKS:%d RXFin:%d | BufSz: TX=%zu RX=%zu RXBuf=%zu App=%zu",
@@ -416,6 +435,19 @@ void Panel::print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods) {
     mvwprintw(win_, line++, 1, "   RX> M1: %02X %08X %02X %08X | M2: %02X %08X %02X %08X",
               module.rxdata_buffer_.CMD1, module.rxdata_buffer_.POS1, module.rxdata_buffer_.STAT1, module.rxdata_buffer_.I1,
               module.rxdata_buffer_.CMD2, module.rxdata_buffer_.POS2, module.rxdata_buffer_.STAT2, module.rxdata_buffer_.I2);
+    
+    // RX data buffer bytes (application layer - 20 bytes)
+    mvwprintw(win_, line++, 1, "   RxData[20]: ");
+    for (size_t j = 0; j < 20; j++) {
+      mvwprintw(win_, line-1, 16 + j*3, "%02X ", module.rxdata_buffer_.bytes[j]);
+    }
+    
+    // Raw RX buffer from FPGA (with header and checksum)
+    size_t rx_buf_size = module.io_.get_ni_rx_buf_size();
+    mvwprintw(win_, line++, 1, "   RawRX[%zu]: ", rx_buf_size);
+    for (size_t j = 0; j < 32; j++) {
+      mvwprintw(win_, line-1, 16 + j*3, "%02X ", module.raw_rx_buffer_[j]);
+    }
     
     // Motor states (decoded) - compact
     mvwprintw(win_, line++, 1, "   Steer: P=%7.3f V=%7.3f T=%6.3f M=%d", 

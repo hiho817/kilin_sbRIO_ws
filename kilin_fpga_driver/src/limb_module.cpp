@@ -39,6 +39,10 @@ LimbModule::LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _st
   RS485_mtr_timedout[1] = false;
   RS485_module_timedout = false;
   
+  // Initialize counters for timeout detection
+  last_tx_count_ = 0;
+  last_rx_count_ = 0;
+  
   // Initialize TX buffer (no header/checksum, FPGA driver handles those)
   memset(&txdata_buffer_, 0, sizeof(txdata_buffer_));
   
@@ -194,11 +198,11 @@ void LimbModule::send_motor_commands() {
   pack_tx_buffer();
   
   // Send via RS485 using union's byte array
-  io_.set_ni_tx_data(txdata_buffer_.bytes, sizeof(txdata_buffer_));
+  io_.set_ni_tx_data(txdata_buffer_.bytes);
   
   // Trigger transmission - toggle the signal
   io_.set_ni_RS485_transmit(NiFpga_True);
-  io_.set_ni_RS485_transmit(NiFpga_False);
+  // io_.set_ni_RS485_transmit(NiFpga_False);
   
   // Debug: Print first transmission
   static bool first_tx = true;
@@ -214,32 +218,23 @@ void LimbModule::send_motor_commands() {
 
 void LimbModule::receive_motor_feedback() {
   // Check if RX is finished
-  if (!io_.get_ni_rx_finish()) {
-    return;
-  }
+  // if (!io_.get_ni_rx_finish()) {
+  //   return;
+  // }
+  // note: rx_finish is only used internally by FPGA driver
   
   // Check if checksum is OK
   if (!io_.get_ni_checksum_ok()) {
-    RS485_module_timedout = true;
+    // Checksum error - data received but corrupted (not a timeout)
     return;
   }
   
-  // Get RX data using union's byte array
-  size_t length = sizeof(rxdata_buffer_);
-  io_.get_ni_rx_data(rxdata_buffer_.bytes, &length);
+  // Get raw RX buffer from FPGA (includes header and checksum)
+  io_.get_ni_rx_buf(raw_rx_buffer_);
   
-  // Debug: Print first reception
-  static bool first_rx = true;
-  if (first_rx) {
-    std::cout << "[" << label_ << "] First RX: len=" << length << " expected=" << sizeof(rxdata_buffer_) << std::endl;
-    std::cout << "  Bytes: ";
-    for (size_t i = 0; i < length; i++) {
-      printf("%02X ", rxdata_buffer_.bytes[i]);
-    }
-    std::cout << std::endl;
-    first_rx = false;
-  }
-  
+  // Get RX data using union's byte array (20 bytes - parsed data without header/checksum)
+  io_.get_ni_rx_data(rxdata_buffer_.bytes);
+    
   // Unpack the buffer
   unpack_rx_buffer();
 }
@@ -290,15 +285,12 @@ void LimbModule::set_wheel_torque(double torque) {
 // ============================================================================
 
 void LimbModule::RS485_timeoutCheck() {
-  // Check TX/RX counts for timeout detection
-  static int32_t last_tx_count = 0;
-  static int32_t last_rx_count = 0;
-  
+  // Check TX/RX counts for timeout detection (per-instance counters)
   int32_t current_tx_count = io_.get_ni_tx_count();
   int32_t current_rx_count = io_.get_ni_rx_count();
   
   // Update timeout flags based on count changes
-  if (current_tx_count == last_tx_count) {
+  if (current_tx_count == last_tx_count_) {
     RS485_tx_timedout_[0] = true;
     RS485_tx_timedout_[1] = true;
   } else {
@@ -306,7 +298,7 @@ void LimbModule::RS485_timeoutCheck() {
     RS485_tx_timedout_[1] = false;
   }
   
-  if (current_rx_count == last_rx_count) {
+  if (current_rx_count == last_rx_count_) {
     RS485_rx_timedout_[0] = true;
     RS485_rx_timedout_[1] = true;
   } else {
@@ -321,6 +313,6 @@ void LimbModule::RS485_timeoutCheck() {
   // Update module timeout flag
   RS485_module_timedout = RS485_mtr_timedout[0] || RS485_mtr_timedout[1];
   
-  last_tx_count = current_tx_count;
-  last_rx_count = current_rx_count;
+  last_tx_count_ = current_tx_count;
+  last_rx_count_ = current_rx_count;
 }

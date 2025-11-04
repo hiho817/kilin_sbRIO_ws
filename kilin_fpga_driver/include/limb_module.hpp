@@ -96,6 +96,7 @@ class LimbModule {
   int rs485_port_;
   RS485_txdata_buf txdata_buffer_;
   RS485_rxdata_buf rxdata_buffer_;
+  uint8_t raw_rx_buffer_[32];  // Raw RX buffer from FPGA (including header/checksum)
   bool RS485_tx_timedout_[2];  // [0] for steering, [1] for wheel
   bool RS485_rx_timedout_[2];
   bool RS485_mtr_timedout[2];
@@ -107,6 +108,8 @@ class LimbModule {
   
   // Timeout management
   int RS485_timeout_us_;
+  int32_t last_tx_count_;  // Per-instance counter for timeout detection
+  int32_t last_rx_count_;  // Per-instance counter for timeout detection
   
   // Helper methods
   void load_config();

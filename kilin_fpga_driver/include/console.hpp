@@ -62,7 +62,7 @@ class InputPanel {
  public:
   InputPanel() {}
 
-  void init(vector<HipModule>* mods_, bool* if_resetPanel, int term_max_x, int term_max_y);
+  void init(vector<HipModule>* mods_, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y);
 
   void inputHandler(WINDOW* win_, std::mutex& input_mutex);
   void reset_input_window(WINDOW* win);
@@ -75,6 +75,9 @@ class InputPanel {
 
   HipModule* modL_ptr_;
   HipModule* modR_ptr_;
+
+  vector<LimbModule>* limb_modules_ptr_;
+
 
   bool* if_resetPanel;
   std::mutex* main_mtx_;

@@ -131,11 +131,22 @@ class ModuleIO_RS485 {
   NiFpga_Status set_fpga_status(const NiFpga_Status newStatus) {
     return NiFpga_MergeStatus(&status_, newStatus);
   };
+  
+  // Status tracking for individual operations
+  NiFpga_Status get_prev_tx_data_status() const { return prev_tx_data_status_; }
+  NiFpga_Status get_prev_rx_data_status() const { return prev_rx_data_status_; }
+  NiFpga_Status get_prev_rx_buf_status() const { return prev_rx_buf_status_; }
+  NiFpga_Status get_prev_transmit_status() const { return prev_transmit_status_; }
+  NiFpga_Status get_prev_checksum_status() const { return prev_checksum_status_; }
+  NiFpga_Status get_prev_rx_finish_status() const { return prev_rx_finish_status_; }
+  NiFpga_Status get_prev_rx_count_status() const { return prev_rx_count_status_; }
+  NiFpga_Status get_prev_tx_count_status() const { return prev_tx_count_status_; }
+  
   // RS485 communication functions
   void set_ni_RS485_transmit(NiFpga_Bool value);
-  void set_ni_tx_data(const uint8_t* tx_data, size_t length);
-  void get_ni_rx_data(uint8_t* rx_data, size_t* length);
-  void get_ni_rx_buf(uint8_t* rx_buf);
+  void set_ni_tx_data(const uint8_t* tx_data);  // Note: tx_data must be r_tx_data_size_ bytes (12 bytes for RS485)
+  void get_ni_rx_data(uint8_t* rx_data);  // Reads r_rx_data_size_ bytes (20 bytes for RS485)
+  void get_ni_rx_buf(uint8_t* rx_buf);    // Reads r_rx_buf_size_ bytes (32 bytes for RS485)
   
   NiFpga_Bool get_ni_checksum_ok();
   NiFpga_Bool get_ni_rx_finish();
@@ -151,6 +162,16 @@ class ModuleIO_RS485 {
   NiFpga_Status status_;
   NiFpga_Session fpga_session_;
   int rs485_port_;  // 1, 2, 3, or 4
+
+  // Status tracking for individual operations
+  NiFpga_Status prev_tx_data_status_;
+  NiFpga_Status prev_rx_data_status_;
+  NiFpga_Status prev_rx_buf_status_;
+  NiFpga_Status prev_transmit_status_;
+  NiFpga_Status prev_checksum_status_;
+  NiFpga_Status prev_rx_finish_status_;
+  NiFpga_Status prev_rx_count_status_;
+  NiFpga_Status prev_tx_count_status_;
 
   // Control and indicator registers (set based on port)
   NiFpga_FPGA_RS485_v1_2_ControlBool r_RS485_transmit_;
