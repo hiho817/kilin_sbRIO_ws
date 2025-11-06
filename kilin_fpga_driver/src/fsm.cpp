@@ -43,8 +43,8 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
       if (pb_state_->at(2) == true) {
         for (int i = 0; i < 2; i++) {
           if (hip_module_list_->at(i).enable_) {
-            hip_module_list_->at(i).io_.set_motor_F_bias(0);
-            hip_module_list_->at(i).io_.set_motor_H_bias(0);
+            hip_module_list_->at(i).Motor_F_bias = 0;
+            hip_module_list_->at(i).Motor_H_bias = 0;
           }
         }
 
@@ -113,8 +113,7 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
               hip_module_list_->at(i).CAN_tx_timedout_[0] = false;
               hip_module_list_->at(i).CAN_tx_timedout_[1] = false;
 
-              hip_module_list_->at(i).io_.set_motor_F_bias(hip_module_list_->at(i).Motor_F_bias);
-              hip_module_list_->at(i).io_.set_motor_H_bias(hip_module_list_->at(i).Motor_H_bias);
+              // Motor biases are already set as public members, no need to call setter
 
               cal_command[i][0] = -hip_module_list_->at(i).Motor_F_bias;
               hip_module_list_->at(i).txdata_buffer_[0].position_ = -hip_module_list_->at(i).Motor_F_bias;
@@ -264,10 +263,9 @@ bool ModeFsm::switchMode(Mode next_mode) {
 
     for (int i = 0; i < 2; i++) {
       if (hip_module_list_->at(i).enable_) {
-        hip_module_list_->at(i).io_.set_ni_CAN_id_fc((int)next_mode_switch, (int)next_mode_switch);
+        hip_module_list_->at(i).CAN_set_mode(next_mode_switch);
         hip_module_list_->at(i).io_.set_ni_CAN_transmit(true);
-        hip_module_list_->at(i).io_.CAN_recieve_feedback(&hip_module_list_->at(i).rxdata_buffer_[0],
-                                                      &hip_module_list_->at(i).rxdata_buffer_[1]);
+        hip_module_list_->at(i).CAN_receive_feedback();
         if ((next_mode_switch == Mode::SET_ZERO &&
              (int)hip_module_list_->at(i).rxdata_buffer_[0].position_ <= 0.01 &&
              (int)hip_module_list_->at(i).rxdata_buffer_[0].position_ >= -0.01) ||

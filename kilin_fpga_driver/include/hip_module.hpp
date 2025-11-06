@@ -41,6 +41,21 @@ class HipModule {
 
   void load_config();
   void CAN_timeoutCheck();
+  
+  // CAN communication methods
+  void CAN_setup();
+  void CAN_set_mode(Mode mode);
+  void CAN_send_command();
+  void CAN_receive_feedback();
+  
+ private:
+  // CAN packet encoding/decoding
+  void CAN_encode_(uint8_t (&txmsg)[8], const CAN_txdata& txdata);
+  void CAN_decode_(const uint8_t (&rxmsg)[8], CAN_rxdata* rxdata);
+  
+  // Data conversion for CAN-bus
+  int float_to_uint_(float x, float x_min, float x_max, int bits);
+  float uint_to_float_(int x_int, float x_min, float x_max, int bits);
 };
 
 double deg2rad(double deg);

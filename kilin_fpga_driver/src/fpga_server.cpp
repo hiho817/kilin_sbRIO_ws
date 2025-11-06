@@ -225,8 +225,7 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
 void Kilin::canLoop_() {
   for (int i = 0; i < 4; i++) {
     if (hip_module_list_[i].enable_ && powerboard_state_.at(2) == true) {
-      hip_module_list_[i].io_.CAN_recieve_feedback(&hip_module_list_[i].rxdata_buffer_[0],
-                                                   &hip_module_list_[i].rxdata_buffer_[1]);
+      hip_module_list_[i].CAN_receive_feedback();
       hip_module_list_[i].CAN_timeoutCheck();
 
       if (hip_module_list_[i].CAN_module_timedout)
@@ -234,8 +233,7 @@ void Kilin::canLoop_() {
       else
         timeout_cnt_ = 0;
       if (timeout_cnt_ < max_timeout_cnt_) {
-        hip_module_list_[i].io_.CAN_send_command(hip_module_list_[i].txdata_buffer_[0],
-                                                 hip_module_list_[i].txdata_buffer_[1]);
+        hip_module_list_[i].CAN_send_command();
         NO_CAN_TIMEDOUT_ERROR_ = true;
       } else
         NO_CAN_TIMEDOUT_ERROR_ = false;

@@ -1,9 +1,7 @@
 #include <fpga_handler.hpp>
 
-ModuleIO_CAN::ModuleIO_CAN(NiFpga_Status status, NiFpga_Session fpga_session, std::string CAN_port_,
-                           std::vector<Motor_CAN>* motors_list)
-    : status_(status), fpga_session_(fpga_session), motors_list_(motors_list) {
-  CAN_timeout_us_ = 1000;
+ModuleIO_CAN::ModuleIO_CAN(NiFpga_Status status, NiFpga_Session fpga_session, std::string CAN_port_)
+    : status_(status), fpga_session_(fpga_session) {
   if (CAN_port_ == "MOD1CAN0") {
     r_CAN_id1_ = NiFpga_FPGA_RS485_v1_2_ControlU32_Mod1CAN0ID1;
     r_CAN_id2_ = NiFpga_FPGA_RS485_v1_2_ControlU32_Mod1CAN0ID2;
@@ -82,7 +80,7 @@ void ModuleIO_CAN::set_ni_port_select(const NiFpga_Bool* array) {
   set_fpga_status(NiFpga_WriteArrayBool(fpga_session_, r_port_select_, array, r_port_select_size_));
 }
 
-void ModuleIO_CAN::set_ni_tx_data_(const uint8_t* tx_arr1, const uint8_t* tx_arr2) {
+void ModuleIO_CAN::set_ni_tx_data(const uint8_t* tx_arr1, const uint8_t* tx_arr2) {
   set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_buf_id1_, tx_arr1, r_tx_buf_size_));
   set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_buf_id2_, tx_arr2, r_tx_buf_size_));
 }
@@ -91,7 +89,7 @@ void ModuleIO_CAN::set_ni_CAN_transmit(NiFpga_Bool value) {
   set_fpga_status(NiFpga_WriteBool(fpga_session_, r_CAN_transmit_, value));
 }
 
-void ModuleIO_CAN::set_ni_timeout_us_(uint32_t value) {
+void ModuleIO_CAN::set_ni_timeout_us(uint32_t value) {
   set_fpga_status(NiFpga_WriteU32(fpga_session_, r_timeout_us_, value));
 }
 
@@ -130,119 +128,9 @@ NiFpga_Bool ModuleIO_CAN::get_ni_rx_timeout() {
   return id1_timeout;
 }
 
-void ModuleIO_CAN::CAN_setup(int timeout_us) {
-  set_ni_CAN_id(motors_list_->at(0).CAN_ID_, motors_list_->at(1).CAN_ID_);
-
-  /* select two port to transceive */
-  NiFpga_Bool _bool_arr[2] = {1, 1};
-  set_ni_port_select(_bool_arr);
-
-  set_ni_timeout_us_(timeout_us);
-}
-
-void ModuleIO_CAN::CAN_set_mode(Mode mode) { set_ni_CAN_id_fc((int)mode, (int)mode); }
-
-void ModuleIO_CAN::CAN_send_command(CAN_txdata txdata_id1, CAN_txdata txdata_id2) {
-  uint8_t txmsg_id1[8];
-  uint8_t txmsg_id2[8];
-  CAN_txdata txdata1_biased;
-  CAN_txdata txdata2_biased;
-
-  txdata1_biased.position_ = txdata_id1.position_ + motor_F_bias_;
-  txdata1_biased.torque_ = txdata_id1.torque_;
-  txdata1_biased.KP_ = txdata_id1.KP_;
-  txdata1_biased.KI_ = txdata_id1.KI_;
-  txdata1_biased.KD_ = txdata_id1.KD_;
-
-  txdata2_biased.position_ = txdata_id2.position_ + motor_H_bias_;
-  txdata2_biased.torque_ = txdata_id2.torque_;
-  txdata2_biased.KP_ = txdata_id2.KP_;
-  txdata2_biased.KI_ = txdata_id2.KI_;
-  txdata2_biased.KD_ = txdata_id2.KD_;
-
-  CAN_encode_(txmsg_id1, txdata1_biased);
-  CAN_encode_(txmsg_id2, txdata2_biased);
-
-  uint32_t fc1, fc2;
-  get_ni_CAN_id_fc(&fc1, &fc2);
-
-  if (fc1 == 1) txmsg_id1[0] = 255;
-  if (fc2 == 1) txmsg_id2[0] = 255;
-
-  set_ni_tx_data_(txmsg_id1, txmsg_id2);
-  usleep(100);
-  set_ni_CAN_transmit(1);
-}
-
-void ModuleIO_CAN::CAN_recieve_feedback(CAN_rxdata* rxdata_id1, CAN_rxdata* rxdata_id2) {
-  uint8_t rxmsg_id1[8];
-  uint8_t rxmsg_id2[8];
-  get_ni_rx_data(rxmsg_id1, rxmsg_id2);
-  CAN_decode_(rxmsg_id1, rxdata_id1);
-  CAN_decode_(rxmsg_id2, rxdata_id2);
-
-  rxdata_id1->position_ -= motor_F_bias_;
-  rxdata_id2->position_ -= motor_H_bias_;
-}
-
-void ModuleIO_CAN::CAN_encode_(uint8_t (&txmsg)[8], CAN_txdata txdata) {
-  int pos_int, torque_int, KP_int, KI_int, KD_int;
-  pos_int = float_to_uint_(-txdata.position_, P_CMD_MIN, P_CMD_MAX, 16);
-  KP_int = float_to_uint_(txdata.KP_, KP_MIN, KP_MAX, 12);
-  KI_int = float_to_uint_(txdata.KI_, KI_MIN, KI_MAX, 12);
-  KD_int = float_to_uint_(txdata.KD_, KD_MIN, KD_MAX, 12);
-  torque_int = float_to_uint_(txdata.torque_, T_MIN, T_MAX, 12);
-
-  txmsg[0] = pos_int >> 8;
-  txmsg[1] = pos_int & 0xFF;
-  txmsg[2] = KP_int >> 4;
-  txmsg[3] = ((KP_int & 0x0F) << 4) | (KI_int >> 8);
-  txmsg[4] = KI_int & 0xFF;
-  txmsg[5] = KD_int >> 4;
-  txmsg[6] = ((KD_int & 0x0F) << 4) | (torque_int >> 8);
-  txmsg[7] = torque_int & 0xFF;
-}
-
-void ModuleIO_CAN::CAN_decode_(uint8_t (&rxmsg)[8], CAN_rxdata* rxdata) {
-  int pos_raw, vel_raw, torque_raw, cal_raw, ver_raw, mode_raw;
-
-  pos_raw = ((int)(rxmsg[0]) << 8) | rxmsg[1];
-  vel_raw = ((int)(rxmsg[2]) << 8) | rxmsg[3];
-  torque_raw = ((int)(rxmsg[4]) << 8) | rxmsg[5];
-  cal_raw = ((int)(rxmsg[6] & 0x0F));
-  ver_raw = ((int)(rxmsg[7] >> 4));
-  mode_raw = ((int)(rxmsg[7] & 0x0F));
-
-  rxdata->position_ = -uint_to_float_(pos_raw, P_FB_MIN, P_FB_MAX, 16);
-  rxdata->velocity_ = uint_to_float_(vel_raw, V_MIN, V_MAX, 16);
-  rxdata->torque_ = uint_to_float_(torque_raw, T_MIN, T_MAX, 16);
-  rxdata->version_ = ver_raw;
-  rxdata->calibrate_finish_ = cal_raw;
-  rxdata->mode_state_ = mode_raw;
-
-  if (mode_raw == _SET_ZERO)
-    rxdata->mode_ = Mode::SET_ZERO;
-  else if (mode_raw == _MOTOR_MODE)
-    rxdata->mode_ = Mode::MOTOR;
-  else if (mode_raw == _HALL_CALIBRATE)
-    rxdata->mode_ = Mode::HALL_CALIBRATE;
-  else if (mode_raw == _REST_MODE)
-    rxdata->mode_ = Mode::REST;
-}
-
-int ModuleIO_CAN::float_to_uint_(float x, float x_min, float x_max, int bits) {
-  /// Converts a float to an unsigned int, given range and number of bits ///
-  float span = x_max - x_min;
-  float offset = x_min;
-  return (int)((x - offset) * ((float)((1 << bits) - 1)) / span);
-}
-
-float ModuleIO_CAN::uint_to_float_(int x_int, float x_min, float x_max, int bits) {
-  /// converts unsigned int to float, given range and number of bits ///
-  float span = x_max - x_min;
-  float offset = x_min;
-  return ((float)x_int) * span / ((float)((1 << bits) - 1)) + offset;
-}
+// ============================================================================
+// PwrbIO Implementation
+// ============================================================================
 
 void PwrbIO::set_ni_pwrb(std::vector<bool>* powerboard_state_) {
   set_fpga_status(NiFpga_WriteBool(fpga_session_, w_pb_digital_, powerboard_state_->at(0)));
