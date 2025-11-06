@@ -357,6 +357,12 @@ void LimbModule::update_motors() {
 // ============================================================================
 
 void LimbModule::set_steering_position(double position) {
+  if (position > MAX_STEERING_POSITION) {
+    position = MAX_STEERING_POSITION;
+  } else if (position < -MAX_STEERING_POSITION) {
+    position = -MAX_STEERING_POSITION;
+  }
+  
   steering_motor.mode_des_ = MotorMode::POSITION;
   steering_motor.pos_des_.as_float = static_cast<float>(position);
 }
