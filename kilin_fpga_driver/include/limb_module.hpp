@@ -12,15 +12,41 @@
 #include "fpga_handler.hpp"
 #include "msg.hpp"
 
+/*= Servo CMD =*/
+enum ServoCmd : uint8_t {
+  CMD_RESET = 0x00,
+  CMD_CONFIG = 0x01,
+  CMD_SET_ZERO = 0x02,
+  CMD_HAL_CAL = 0x03,      // Reserved
+  CMD_MOTOR_MODE = 0x04,  // this looks like don't do much ?
+  CMD_MOTOR_CMD = 0x05,  // this is the one that makes the motor move
+  CMD_TEST = 0x06
+};
+
+/*= Servo Sub CMD =*/
+constexpr uint8_t SHIFTBIT_SUBCMD = 4;
+
+enum ServoSubCmd : uint8_t {
+  // // SUBCMD for CMD_CONFIG of steering motor
+  // SUBCMD_CONFIG_READ = 0x00,
+  // SUBCMD_CONFIG_WRITE = 0x01,
+  
+  // SUBCMD for CMD_MOTOR_MODE of wheelhub motor
+  SUBCMD_MOTOR_POSITON = 0x00,
+  SUBCMD_MOTOR_SPEED = 0x01,
+  SUBCMD_MOTOR_TORQUE = 0x02
+};
+
+
 // TX Data Buffer with union for easy byte access
 union RS485_txdata_buf {
   struct __attribute__((packed)) {
-    uint8_t CMD1;       // Byte 0
-    uint8_t SUBCMD1;    // Byte 1
-    uint32_t Data1;     // Bytes 2-5
-    uint8_t CMD2;       // Byte 6
-    uint8_t SUBCMD2;    // Byte 7
-    uint32_t Data2;     // Bytes 8-11
+    ServoCmd CMD1;       // Byte 0
+    ServoSubCmd SUBCMD1;    // Byte 1
+    int32_t Data1;     // Bytes 2-5
+    ServoCmd CMD2;       // Byte 6
+    ServoSubCmd SUBCMD2;    // Byte 7
+    int32_t Data2;     // Bytes 8-11
   };
   uint8_t bytes[12];    // Raw byte array access
 };
@@ -46,16 +72,31 @@ union RS485_rxdata_buf {
 // Byte		  |   0~4  |  5   | 6~9  |   10  | 11~14 |  15  | 16~19 |   20  |  21~24  |   25|   26    
 // Function	| Header | CMD1 | POS1 | STAT1 |   I1  | CMD2 | POS2  | STAT2 |    I2   |Checksum1|Checksum2|
 
+// Position data that can be either int32 or float32
+union MotorPosition {
+  int32_t as_int;
+  float as_float;
+  
+  MotorPosition() : as_int(0) {}
+  MotorPosition(int32_t val) : as_int(val) {}
+  MotorPosition(float val) : as_float(val) {}
+};
+
 struct Motor_RS485 {
   int id_;
-  double position_;
-  double velocity_;
-  double torque_;
-  double kp_;
-  double ki_;
-  double kd_;
-  double kt_;
-  MotorMode mode_;
+  bool is_steering_;  // true for steering (uses float), false for wheel (uses int32)
+  
+  // Command values (desired, sent to motor)
+  MotorPosition pos_des_;  // float for steering, int32 for wheel
+  double vel_des_;
+  double trq_des_;
+  MotorMode mode_des_;
+  
+  // Feedback values (actual, received from motor)
+  MotorPosition pos_act_;  // float for steering, int32 for wheel
+  double vel_act_;
+  double trq_act_;
+  MotorMode mode_act_;
 };
 
 class LimbModule {
@@ -73,19 +114,25 @@ class LimbModule {
   void update_motors();
   
   // Motor control methods
-  void set_steering_position(double position, double kp, double kd);
-  void set_steering_velocity(double velocity, double kp, double kd);
+  void set_steering_position(double position);
+  void set_steering_velocity(double velocity);
   void set_steering_torque(double torque);
-  void set_wheel_velocity(double velocity, double kp, double kd);
+  void set_wheel_velocity(double velocity);
   void set_wheel_torque(double torque);
   
   // Getters
-  double get_steering_position() const { return steering_motor.position_; }
-  double get_steering_velocity() const { return steering_motor.velocity_; }
-  double get_steering_torque() const { return steering_motor.torque_; }
-  double get_wheel_position() const { return wheel_motor.position_; }
-  double get_wheel_velocity() const { return wheel_motor.velocity_; }
-  double get_wheel_torque() const { return wheel_motor.torque_; }
+  float get_steering_position() const { return steering_motor.pos_act_.as_float; }
+  double get_steering_velocity() const { return steering_motor.vel_act_; }
+  double get_steering_torque() const { return steering_motor.trq_act_; }
+  int32_t get_wheel_position() const { return wheel_motor.pos_act_.as_int; }
+  double get_wheel_velocity() const { return wheel_motor.vel_act_; }
+  double get_wheel_torque() const { return wheel_motor.trq_act_; }
+  
+  // Debug getters for mode change management
+  MotorMode get_prev_mode_des_steering() const { return prev_mode_des_steering_; }
+  MotorMode get_prev_mode_des_wheel() const { return prev_mode_des_wheel_; }
+  bool get_mode_change_sent_steering() const { return mode_change_sent_steering_; }
+  bool get_mode_change_sent_wheel() const { return mode_change_sent_wheel_; }
   
   bool is_communication_ok() const { return !RS485_module_timedout; }
   
@@ -97,9 +144,8 @@ class LimbModule {
   RS485_txdata_buf txdata_buffer_;
   RS485_rxdata_buf rxdata_buffer_;
   uint8_t raw_rx_buffer_[32];  // Raw RX buffer from FPGA (including header/checksum)
-  bool RS485_tx_timedout_[2];  // [0] for steering, [1] for wheel
-  bool RS485_rx_timedout_[2];
-  bool RS485_mtr_timedout[2];
+  bool RS485_tx_timedout;
+  bool RS485_rx_timedout;
   bool RS485_module_timedout;
 
  private:
@@ -111,10 +157,16 @@ class LimbModule {
   int32_t last_tx_count_;  // Per-instance counter for timeout detection
   int32_t last_rx_count_;  // Per-instance counter for timeout detection
   
+  // Mode change management
+  MotorMode prev_mode_des_steering_;  // Track previous desired mode to detect changes
+  MotorMode prev_mode_des_wheel_;
+  bool mode_change_sent_steering_;    // Flag indicating mode change command was sent
+  bool mode_change_sent_wheel_;
+  
   // Helper methods
   void load_config();
   void RS485_timeoutCheck();
-  void pack_tx_buffer();
+  bool pack_tx_buffer();
   void unpack_rx_buffer();
   uint8_t calculate_checksum(const uint8_t* data, size_t length);
   bool verify_checksum(const uint8_t* data, size_t length);

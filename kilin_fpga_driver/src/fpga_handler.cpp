@@ -359,16 +359,6 @@ ModuleIO_RS485::ModuleIO_RS485(NiFpga_Status status, NiFpga_Session fpga_session
     : status_(status),
       fpga_session_(fpga_session),
       rs485_port_(rs485_port) {
-  // Initialize status tracking
-  prev_tx_data_status_ = NiFpga_Status_Success;
-  prev_rx_data_status_ = NiFpga_Status_Success;
-  prev_rx_buf_status_ = NiFpga_Status_Success;
-  prev_transmit_status_ = NiFpga_Status_Success;
-  prev_checksum_status_ = NiFpga_Status_Success;
-  prev_rx_finish_status_ = NiFpga_Status_Success;
-  prev_rx_count_status_ = NiFpga_Status_Success;
-  prev_tx_count_status_ = NiFpga_Status_Success;
-  
   init_registers_();
 }
 
@@ -434,52 +424,44 @@ void ModuleIO_RS485::init_registers_() {
 }
 
 void ModuleIO_RS485::set_ni_RS485_transmit(NiFpga_Bool value) {
-  prev_transmit_status_ = NiFpga_WriteBool(fpga_session_, r_RS485_transmit_, value);
-  set_fpga_status(prev_transmit_status_);
+  set_fpga_status(NiFpga_WriteBool(fpga_session_, r_RS485_transmit_, value));
 }
 
 void ModuleIO_RS485::set_ni_tx_data(const uint8_t* tx_data) {
   // Write the TX data to FPGA using the internally stored buffer size
   // Note: Caller must ensure tx_data buffer is exactly r_tx_data_size_ bytes (12 bytes for RS485)
-  prev_tx_data_status_ = NiFpga_WriteArrayU8(fpga_session_, r_tx_data_, tx_data, r_tx_data_size_);
-  set_fpga_status(prev_tx_data_status_);
+  set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_data_, tx_data, r_tx_data_size_));
 }
 
 void ModuleIO_RS485::get_ni_rx_data(uint8_t* rx_data) {
-  prev_rx_data_status_ = NiFpga_ReadArrayU8(fpga_session_, r_rx_data_, rx_data, r_rx_data_size_);
-  set_fpga_status(prev_rx_data_status_);
+  set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_rx_data_, rx_data, r_rx_data_size_));
 }
 
 void ModuleIO_RS485::get_ni_rx_buf(uint8_t* rx_buf) {
-  prev_rx_buf_status_ = NiFpga_ReadArrayU8(fpga_session_, r_rx_buf_, rx_buf, r_rx_buf_size_);
-  set_fpga_status(prev_rx_buf_status_);
+  set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_rx_buf_, rx_buf, r_rx_buf_size_));
 }
 
 NiFpga_Bool ModuleIO_RS485::get_ni_checksum_ok() {
   NiFpga_Bool value;
-  prev_checksum_status_ = NiFpga_ReadBool(fpga_session_, r_checksum_ok_, &value);
-  set_fpga_status(prev_checksum_status_);
+  set_fpga_status(NiFpga_ReadBool(fpga_session_, r_checksum_ok_, &value));
   return value;
 }
 
 NiFpga_Bool ModuleIO_RS485::get_ni_rx_finish() {
   NiFpga_Bool value;
-  prev_rx_finish_status_ = NiFpga_ReadBool(fpga_session_, r_rx_finish_, &value);
-  set_fpga_status(prev_rx_finish_status_);
+  set_fpga_status(NiFpga_ReadBool(fpga_session_, r_rx_finish_, &value));
   return value;
 }
 
 int32_t ModuleIO_RS485::get_ni_rx_count() {
   int32_t value;
-  prev_rx_count_status_ = NiFpga_ReadI32(fpga_session_, r_rx_count_, &value);
-  set_fpga_status(prev_rx_count_status_);
+  set_fpga_status(NiFpga_ReadI32(fpga_session_, r_rx_count_, &value));
   return value;
 }
 
 int32_t ModuleIO_RS485::get_ni_tx_count() {
   int32_t value;
-  prev_tx_count_status_ = NiFpga_ReadI32(fpga_session_, r_tx_count_, &value);
-  set_fpga_status(prev_tx_count_status_);
+  set_fpga_status(NiFpga_ReadI32(fpga_session_, r_tx_count_, &value));
   return value;
 }
 

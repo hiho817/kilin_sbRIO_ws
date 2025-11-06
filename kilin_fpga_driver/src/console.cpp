@@ -150,6 +150,7 @@ void InputPanel::commandDecode(string buf) {
   bool pb_selected = false;
   bool lm_selected = false;
   bool f_selected = false;
+  bool limb_selected = false;
 
   bool switchFSM_success = true;
   HipModule* md_ptr_;
@@ -168,6 +169,8 @@ void InputPanel::commandDecode(string buf) {
     } else if (bufs[0] == "R") {
       lm_selected = true;
       md_ptr_ = modR_ptr_;
+    } else if (bufs[0] == "T") {
+      limb_selected = true;
     } else {
       syntax_err = true;
     }
@@ -285,6 +288,88 @@ void InputPanel::commandDecode(string buf) {
         syntax_err = true;
       }
     }
+  } else if (bufs.size() == 5) {
+    // Format: T <module_id> <motor> <command> <value>
+    // T 0 S M 4  -> Set limb module 0, steering motor, mode to 4 (POSITION)
+    // T 0 S P 100 -> Set limb module 0, steering motor, position to 100
+    // T 0 W V 50 -> Set limb module 0, wheel motor, velocity to 50
+    mvwprintw(win_, 2, 3, bufs[1].c_str());
+    mvwprintw(win_, 2, 5, bufs[2].c_str());
+    mvwprintw(win_, 2, 7, bufs[3].c_str());
+    mvwprintw(win_, 2, 9, bufs[4].c_str());
+    wrefresh(win_);
+    
+    if (limb_selected) {
+      try {
+        int module_idx = stoi(bufs[1]);
+        
+        if (module_idx < 0 || module_idx >= (int)limb_modules_ptr_->size()) {
+          syntax_err = true;
+          mvwprintw(win_, 2, 1, "Invalid module index");
+        } else {
+          LimbModule& limb_mod = limb_modules_ptr_->at(module_idx);
+          
+          // Determine motor (S=steering, W=wheel)
+          bool is_steering = (bufs[2] == "S");
+          bool is_wheel = (bufs[2] == "W");
+          
+          if (!is_steering && !is_wheel) {
+            syntax_err = true;
+            mvwprintw(win_, 2, 1, "Invalid motor (use S or W)");
+          } else {
+            // Determine command
+            if (bufs[3] == "M") {
+              // Set mode: R=0(REST), C=1(CONFIG), Z=2(SET_ZERO), H=3(HALL_CAL), P=4(POSITION), V=5(VELOCITY), T=6(TORQUE)
+              int mode_val = stoi(bufs[4]);
+              if (mode_val >= 0 && mode_val <= 6) {
+                if (is_steering) {
+                  limb_mod.steering_motor.mode_des_ = static_cast<MotorMode>(mode_val);
+                } else {
+                  limb_mod.wheel_motor.mode_des_ = static_cast<MotorMode>(mode_val);
+                }
+              } else {
+                syntax_err = true;
+                mvwprintw(win_, 2, 1, "Invalid mode value");
+              }
+            } else if (bufs[3] == "P") {
+              // Set position
+              double pos_val = stof(bufs[4]);
+              if (is_steering) {
+                limb_mod.set_steering_position(pos_val);
+              } else {
+                // Wheel doesn't typically use position control, but we can set the desired value
+                limb_mod.wheel_motor.mode_des_ = MotorMode::POSITION;
+                limb_mod.wheel_motor.pos_des_.as_int = static_cast<int32_t>(pos_val);
+              }
+            } else if (bufs[3] == "V") {
+              // Set velocity
+              double vel_val = stof(bufs[4]);
+              if (is_steering) {
+                limb_mod.set_steering_velocity(vel_val);
+              } else {
+                limb_mod.set_wheel_velocity(vel_val);
+              }
+            } else if (bufs[3] == "T") {
+              // Set torque
+              double trq_val = stof(bufs[4]);
+              if (is_steering) {
+                limb_mod.set_steering_torque(trq_val);
+              } else {
+                limb_mod.set_wheel_torque(trq_val);
+              }
+            } else {
+              syntax_err = true;
+              mvwprintw(win_, 2, 1, "Invalid command");
+            }
+          }
+        }
+      } catch (exception& e) {
+        syntax_err = true;
+        mvwprintw(win_, 2, 1, "Parse error");
+      }
+    } else {
+      syntax_err = true;
+    }
   } else {
     syntax_err = true;
   }
@@ -398,34 +483,14 @@ void Panel::print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods) {
     LimbModule& module = limb_mods->at(i);
     
     // Module header with communication status
-    mvwprintw(win_, line++, 1, ">> Module [%zu]: %s  |  Port:%d  |  Status:%s  |  FPGA:%s (Main:%d)", i, 
+    mvwprintw(win_, line++, 1, ">> Module [%zu]: %s  |  Port:%d  |  Status:%s  |  FPGA:%s  |  TX:%d RX:%d CKS:%d", i, 
               module.label_.c_str(),
               module.rs485_port_,
               module.is_communication_ok() ? "OK     " : "TIMEOUT",
               module.io_.get_fpga_status() ? "ERR" : "OK",
-              module.io_.get_fpga_status());
-    
-    // Operation-level status codes (detailed error tracking)
-    mvwprintw(win_, line++, 1, "   OpStat> TX:%d RX:%d RXBuf:%d Xmit:%d CKS:%d RXFin:%d RXCnt:%d TXCnt:%d",
-              module.io_.get_prev_tx_data_status(),
-              module.io_.get_prev_rx_data_status(),
-              module.io_.get_prev_rx_buf_status(),
-              module.io_.get_prev_transmit_status(),
-              module.io_.get_prev_checksum_status(),
-              module.io_.get_prev_rx_finish_status(),
-              module.io_.get_prev_rx_count_status(),
-              module.io_.get_prev_tx_count_status());
-    
-    // Communication statistics and buffer sizes on one line
-    mvwprintw(win_, line++, 1, "   TX:%d RX:%d CKS:%d RXFin:%d | BufSz: TX=%zu RX=%zu RXBuf=%zu App=%zu",
               module.io_.get_ni_tx_count(),
               module.io_.get_ni_rx_count(),
-              module.io_.get_ni_checksum_ok(),
-              module.io_.get_ni_rx_finish(),
-              module.io_.get_ni_tx_data_size(),
-              module.io_.get_ni_rx_data_size(),
-              module.io_.get_ni_rx_buf_size(),
-              sizeof(module.txdata_buffer_));
+              module.io_.get_ni_checksum_ok());
     
     // TX and RX Buffer on same lines (compact)
     mvwprintw(win_, line++, 1, "   TX> M1: %02X %02X %08X | M2: %02X %02X %08X",
@@ -436,31 +501,24 @@ void Panel::print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods) {
               module.rxdata_buffer_.CMD1, module.rxdata_buffer_.POS1, module.rxdata_buffer_.STAT1, module.rxdata_buffer_.I1,
               module.rxdata_buffer_.CMD2, module.rxdata_buffer_.POS2, module.rxdata_buffer_.STAT2, module.rxdata_buffer_.I2);
     
-    // RX data buffer bytes (application layer - 20 bytes)
-    mvwprintw(win_, line++, 1, "   RxData[20]: ");
-    for (size_t j = 0; j < 20; j++) {
-      mvwprintw(win_, line-1, 16 + j*3, "%02X ", module.rxdata_buffer_.bytes[j]);
-    }
+    // Steering motor: Desired vs Actual
+    mvwprintw(win_, line++, 1, "   Steer | Des[M:%d]: P=%10.3f V=%5.3f T=%3.3f | Act[M:%d]: P=%10.3f V=%5.3f T=%3.3f", 
+              (int)module.steering_motor.mode_des_,
+              module.steering_motor.pos_des_.as_float, module.steering_motor.vel_des_, module.steering_motor.trq_des_,
+              (int)module.steering_motor.mode_act_,
+              module.steering_motor.pos_act_.as_float, module.steering_motor.vel_act_, module.steering_motor.trq_act_);
     
-    // Raw RX buffer from FPGA (with header and checksum)
-    size_t rx_buf_size = module.io_.get_ni_rx_buf_size();
-    mvwprintw(win_, line++, 1, "   RawRX[%zu]: ", rx_buf_size);
-    for (size_t j = 0; j < 32; j++) {
-      mvwprintw(win_, line-1, 16 + j*3, "%02X ", module.raw_rx_buffer_[j]);
-    }
+    // Wheel motor: Desired vs Actual
+    mvwprintw(win_, line++, 1, "   Wheel | Des[M:%d]: P=%10d V=%5.3f T=%3.3f | Act[M:%d]: P=%10d V=%5.3f T=%3.3f",
+              (int)module.wheel_motor.mode_des_,
+              module.wheel_motor.pos_des_.as_int, module.wheel_motor.vel_des_, module.wheel_motor.trq_des_,
+              (int)module.wheel_motor.mode_act_,
+              module.wheel_motor.pos_act_.as_int, module.wheel_motor.vel_act_, module.wheel_motor.trq_act_);
     
-    // Motor states (decoded) - compact
-    mvwprintw(win_, line++, 1, "   Steer: P=%7.3f V=%7.3f T=%6.3f M=%d", 
-          module.get_steering_position(), module.get_steering_velocity(), module.get_steering_torque(), (int)module.steering_motor.mode_);
-    mvwprintw(win_, line++, 1, "   Wheel: P=%7.3f V=%7.3f T=%6.3f M=%d",
-          module.get_wheel_position(), module.get_wheel_velocity(), module.get_wheel_torque(), (int)module.wheel_motor.mode_);
-    
-    // Timeout flags - compact
-    mvwprintw(win_, line++, 1, "   Timeout> TX:[%d,%d] RX:[%d,%d] Mtr:[%d,%d] Mod:%d",
-              module.RS485_tx_timedout_[0], module.RS485_tx_timedout_[1],
-              module.RS485_rx_timedout_[0], module.RS485_rx_timedout_[1],
-              module.RS485_mtr_timedout[0], module.RS485_mtr_timedout[1],
-              module.RS485_module_timedout);
+    // Mode change management debug info
+    mvwprintw(win_, line++, 1, "   Mode> Steer: PrevM:%d ChgSent:%d | Wheel: PrevM:%d ChgSent:%d",
+              (int)module.get_prev_mode_des_steering(), module.get_mode_change_sent_steering(),
+              (int)module.get_prev_mode_des_wheel(), module.get_mode_change_sent_wheel());
     
     // Module separator (compact)
     if (i < limb_mods->size() - 1) {

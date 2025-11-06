@@ -332,7 +332,7 @@ int main(int argc, char* argv[]) {
 
   core::Publisher<motor_msg::MotorStateStamped>& motor_pub = nh.advertise<motor_msg::MotorStateStamped>("motor/state");
   core::Subscriber<motor_msg::MotorCmdStamped>& motor_sub =
-      nh.subscribe<motor_msg::MotorCmdStamped>("motor/command", 1000, motor_data_cb);
+      nh.subscribe<motor_msg::MotorCmdStamped>("motor/command", 100, motor_data_cb);
 
   kilin.interruptHandler(power_sub, power_pub, motor_sub, motor_pub);
 
