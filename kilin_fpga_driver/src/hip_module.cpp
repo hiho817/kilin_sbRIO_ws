@@ -72,8 +72,6 @@ void HipModule::load_config() {
   motor_f.kd_ = config_[label_]["Motor_F"]["KD"].as<double>();
   motor_f.kt_ = config_[label_]["Motor_F"]["KT"].as<double>();
   motor_f.torque_ff_ = config_[label_]["Motor_F"]["Torque_Feedfoward"].as<double>();
-
-  Motor_F_bias = config_[label_]["Motor_F"]["Calibration_Bias"].as<double>();
   motor_f.calibration_bias = 0;
 
   // Motor H setup
@@ -84,8 +82,6 @@ void HipModule::load_config() {
   motor_h.kd_ = config_[label_]["Motor_H"]["KD"].as<double>();
   motor_h.kt_ = config_[label_]["Motor_H"]["KT"].as<double>();
   motor_h.torque_ff_ = config_[label_]["Motor_H"]["Torque_Feedfoward"].as<double>();
-
-  Motor_H_bias = config_[label_]["Motor_H"]["Calibration_Bias"].as<double>();
   motor_h.calibration_bias = 0;
 
   motors_list_.push_back(motor_f);
@@ -102,7 +98,6 @@ void HipModule::load_config() {
   std::cout << std::setw(14) << "  KD: " << std::setw(13) << motor_f.kd_ << std::endl;
   std::cout << std::setw(14) << "  KT: " << std::setw(13) << motor_f.kt_ << std::endl;
   std::cout << std::setw(14) << "  Torque_ff: " << std::setw(13) << motor_f.torque_ff_ << std::endl;
-  std::cout << std::setw(14) << "  Bias: " << std::setw(13) << Motor_F_bias << std::endl;
   std::cout << std::setw(14) << "---------------------------" << std::endl;
 
   std::cout << "Motor_H: " << std::endl;
@@ -114,7 +109,6 @@ void HipModule::load_config() {
   std::cout << std::setw(14) << "  KD: " << std::setw(13) << motor_h.kd_ << std::endl;
   std::cout << std::setw(14) << "  KT: " << std::setw(13) << motor_h.kt_ << std::endl;
   std::cout << std::setw(14) << "  Torque_ff: " << std::setw(13) << motor_h.torque_ff_ << std::endl;
-  std::cout << std::setw(14) << "  Bias: " << std::setw(13) << Motor_H_bias << std::endl;
   std::cout << std::setw(14) << "---------------------------" << std::endl;
 }
 
@@ -145,23 +139,9 @@ void HipModule::CAN_set_mode(Mode mode) {
 void HipModule::CAN_send_command() {
   uint8_t txmsg_id1[8];
   uint8_t txmsg_id2[8];
-  CAN_txdata txdata1_biased;
-  CAN_txdata txdata2_biased;
 
-  txdata1_biased.position_ = txdata_buffer_[0].position_ + Motor_F_bias;
-  txdata1_biased.torque_ = txdata_buffer_[0].torque_;
-  txdata1_biased.KP_ = txdata_buffer_[0].KP_;
-  txdata1_biased.KI_ = txdata_buffer_[0].KI_;
-  txdata1_biased.KD_ = txdata_buffer_[0].KD_;
-
-  txdata2_biased.position_ = txdata_buffer_[1].position_ + Motor_H_bias;
-  txdata2_biased.torque_ = txdata_buffer_[1].torque_;
-  txdata2_biased.KP_ = txdata_buffer_[1].KP_;
-  txdata2_biased.KI_ = txdata_buffer_[1].KI_;
-  txdata2_biased.KD_ = txdata_buffer_[1].KD_;
-
-  CAN_encode_(txmsg_id1, txdata1_biased);
-  CAN_encode_(txmsg_id2, txdata2_biased);
+  CAN_encode_(txmsg_id1, txdata_buffer_[0]);
+  CAN_encode_(txmsg_id2, txdata_buffer_[1]);
 
   uint32_t fc1, fc2;
   io_.get_ni_CAN_id_fc(&fc1, &fc2);
@@ -180,9 +160,6 @@ void HipModule::CAN_receive_feedback() {
   io_.get_ni_rx_data(rxmsg_id1, rxmsg_id2);
   CAN_decode_(rxmsg_id1, &rxdata_buffer_[0]);
   CAN_decode_(rxmsg_id2, &rxdata_buffer_[1]);
-
-  rxdata_buffer_[0].position_ -= Motor_F_bias;
-  rxdata_buffer_[1].position_ -= Motor_H_bias;
 }
 
 void HipModule::CAN_encode_(uint8_t (&txmsg)[8], const CAN_txdata& txdata) {

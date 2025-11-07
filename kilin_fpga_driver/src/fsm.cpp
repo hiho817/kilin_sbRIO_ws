@@ -18,7 +18,7 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
   switch (workingMode_) {
     case Mode::REST: {
       // TODO: pb_state = { digital_switch_, signal_switch_, power_switch_ }
-      if (pb_state_->at(2) == true) {
+      if (pb_state_ && pb_state_->size() >= 3 && pb_state_->at(2) == true) {
         publishMsg(motor_fb_msg);
         for (auto& mod : *hip_module_list_) {
           int index = 0;
@@ -40,14 +40,7 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
     } break;
 
     case Mode::SET_ZERO: {
-      if (pb_state_->at(2) == true) {
-        for (int i = 0; i < 2; i++) {
-          if (hip_module_list_->at(i).enable_) {
-            hip_module_list_->at(i).Motor_F_bias = 0;
-            hip_module_list_->at(i).Motor_H_bias = 0;
-          }
-        }
-
+      if (pb_state_ && pb_state_->size() >= 3 && pb_state_->at(2) == true) {
         publishMsg(motor_fb_msg);
         for (auto& mod : *hip_module_list_) {
           if (mod.enable_) {
@@ -113,14 +106,12 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
               hip_module_list_->at(i).CAN_tx_timedout_[0] = false;
               hip_module_list_->at(i).CAN_tx_timedout_[1] = false;
 
-              // Motor biases are already set as public members, no need to call setter
-
-              cal_command[i][0] = -hip_module_list_->at(i).Motor_F_bias;
-              hip_module_list_->at(i).txdata_buffer_[0].position_ = -hip_module_list_->at(i).Motor_F_bias;
+              cal_command[i][0] = 0;
+              hip_module_list_->at(i).txdata_buffer_[0].position_ = 0;
               cal_dir_[i][0] = 1;
 
-              cal_command[i][1] = -hip_module_list_->at(i).Motor_H_bias;
-              hip_module_list_->at(i).txdata_buffer_[1].position_ = -hip_module_list_->at(i).Motor_H_bias;
+              cal_command[i][1] = 0;
+              hip_module_list_->at(i).txdata_buffer_[1].position_ = 0;
               cal_dir_[i][1] = -1;
             }
           }

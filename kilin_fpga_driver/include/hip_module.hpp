@@ -36,9 +36,6 @@ class HipModule {
   CAN_txdata txdata_buffer_[2];
   CAN_rxdata rxdata_buffer_[2];
 
-  double Motor_F_bias = 0;
-  double Motor_H_bias = 0;
-
   void load_config();
   void CAN_timeoutCheck();
   
