@@ -9,6 +9,10 @@ HipMotor::HipMotor(std::string label, YAML::Node config, NiFpga_Status _status,
   CAN_rx_timedout_ = false;
   CAN_mtr_timedout_ = false;
 
+  // Initialize mode
+  current_mode_ = Mode::REST;
+  prev_mode_ = Mode::REST;
+
   txdata_buffer_.position_ = 0;
   txdata_buffer_.torque_ = 0;
   txdata_buffer_.KP_ = motor_info_.kp_;
@@ -86,18 +90,6 @@ void HipMotor::CAN_setup() {
   io_.set_ni_port_select(_bool_arr);
 
   io_.set_ni_timeout_us(CAN_timeout_us);
-}
-
-void HipMotor::CAN_set_mode(Mode mode) {
-  // Set mode for this specific motor
-  uint32_t fc1, fc2;
-  io_.get_ni_CAN_id_fc(&fc1, &fc2);
-  
-  if (motor_index_ == 0) {
-    io_.set_ni_CAN_id_fc((int)mode, fc2);
-  } else {
-    io_.set_ni_CAN_id_fc(fc1, (int)mode);
-  }
 }
 
 void HipMotor::CAN_send_command() {
@@ -194,4 +186,101 @@ float HipMotor::uint_to_float_(int x_int, float x_min, float x_max, int bits) {
   float span = x_max - x_min;
   float offset = x_min;
   return ((float)x_int) * span / ((float)((1 << bits) - 1)) + offset;
+}
+
+// Mode switching with retry logic
+bool HipMotor::switch_mode(Mode next_mode) {
+  if (!enable_) {
+    return false;
+  }
+
+  bool success = false;
+  double time_elapsed = 0;
+  const double timeout = 3.0;  // 3 second timeout
+
+  while (!success && time_elapsed < timeout) {
+    // Set the mode
+    set_mode_internal_(next_mode);
+    
+    // Send and receive
+    io_.set_ni_CAN_transmit(true);
+    CAN_receive_feedback();
+
+    // Check if mode switched
+    if (next_mode == Mode::SET_ZERO) {
+      // For SET_ZERO, check if position is near zero
+      if (fabs(rxdata_buffer_.position_) <= 0.01) {
+        success = true;
+      }
+    } else {
+      // For other modes, check mode feedback
+      if (rxdata_buffer_.mode_ == next_mode) {
+        success = true;
+      }
+    }
+
+    if (!success) {
+      time_elapsed += 0.01;
+      usleep(10000);  // 10ms
+    }
+  }
+
+  if (success) {
+    prev_mode_ = current_mode_;
+    current_mode_ = next_mode;
+  }
+
+  return success;
+}
+
+// Set mode in CAN function code
+void HipMotor::set_mode_internal_(Mode mode) {
+  uint32_t fc1, fc2;
+  io_.get_ni_CAN_id_fc(&fc1, &fc2);
+  
+  if (motor_index_ == 0) {
+    io_.set_ni_CAN_id_fc((int)mode, fc2);
+  } else {
+    io_.set_ni_CAN_id_fc(fc1, (int)mode);
+  }
+}
+
+// Main update function - call this regularly
+void HipMotor::update_motor() {
+  if (!enable_) {
+    return;
+  }
+
+  CAN_send_command();
+  CAN_receive_feedback();
+  CAN_timeoutCheck();
+}
+
+// Set position command with gains
+void HipMotor::set_position_command(double pos, double kp, double ki, double kd) {
+  txdata_buffer_.position_ = pos;
+  txdata_buffer_.KP_ = kp;
+  txdata_buffer_.KI_ = ki;
+  txdata_buffer_.KD_ = kd;
+}
+
+// Set torque command
+void HipMotor::set_torque_command(double torque) {
+  txdata_buffer_.torque_ = torque;
+}
+
+// Set control gains
+void HipMotor::set_control_gains(double kp, double ki, double kd) {
+  txdata_buffer_.KP_ = kp;
+  txdata_buffer_.KI_ = ki;
+  txdata_buffer_.KD_ = kd;
+}
+
+// Stop motor - zero all commands
+void HipMotor::stop() {
+  txdata_buffer_.position_ = 0;
+  txdata_buffer_.torque_ = 0;
+  txdata_buffer_.KP_ = 0;
+  txdata_buffer_.KI_ = 0;
+  txdata_buffer_.KD_ = 0;
 }
