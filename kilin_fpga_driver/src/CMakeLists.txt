@@ -13,6 +13,7 @@ add_executable(fpga_driver  fpga_server.cpp
                             fpga_handler.cpp
                             fsm.cpp
                             hip_module.cpp
+                            hip_motor.cpp
                             limb_module.cpp
                             NiFpga_FPGA_RS485_v1_2.c
                             NiFpga.c                       
