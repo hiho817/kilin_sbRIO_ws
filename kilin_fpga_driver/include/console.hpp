@@ -17,8 +17,8 @@
 #include <string>
 #include <thread>
 
-#include "fsm.hpp"
 #include "hip_module.hpp"
+#include "hip_motor.hpp"
 #include "limb_module.hpp"
 
 #undef OK
@@ -44,14 +44,14 @@ class Panel {
   bool box_on_;
 
   HipModule* md_ptr_;
+  HipMotor* hip_motor_ptr_;  // For individual hip motor display
   std::mutex* main_mtx_;
   std::vector<bool>* powerboard_state_;
-  ModeFsm* fsm_;
 
   mutex mutex_;
   void infoDisplay();
+  void print_hip_motor_info(HipMotor* motor1, HipMotor* motor2);  // Display two hip motors (like old HipModule)
   void print_pwrb_info(FpgaHandler* fpga, bool power_switch, bool signal_switch, bool digital_switch);
-  void print_mode_main(Behavior bhv, Mode fsm_mode);
   void print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods);
 
   void reset();
@@ -63,6 +63,7 @@ class InputPanel {
   InputPanel() {}
 
   void init(vector<HipModule>* mods_, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y);
+  void init_hip_motors(HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y);
 
   void inputHandler(WINDOW* win_, std::mutex& input_mutex);
   void reset_input_window(WINDOW* win);
@@ -75,6 +76,12 @@ class InputPanel {
 
   HipModule* modL_ptr_;
   HipModule* modR_ptr_;
+  
+  // Individual hip motor pointers
+  HipMotor* hip_motor_LF_;
+  HipMotor* hip_motor_LH_;
+  HipMotor* hip_motor_RF_;
+  HipMotor* hip_motor_RH_;
 
   vector<LimbModule>* limb_modules_ptr_;
 
@@ -82,7 +89,7 @@ class InputPanel {
   bool* if_resetPanel;
   std::mutex* main_mtx_;
   std::vector<bool>* powerboard_state_;
-  ModeFsm* fsm_;
+  // ModeFsm* fsm_;
 
  private:
   std::thread* thread;
@@ -93,7 +100,10 @@ class Console {
   Console() {}
 
   void init(FpgaHandler* fpga_, vector<HipModule>* mods_, vector<LimbModule>* rs485_mods, std::vector<bool>* pb_state_,
-            ModeFsm* fsm_, std::mutex* mtx_);
+           std::mutex* mtx_);
+  void init_hip_motors(FpgaHandler* fpga_, HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh, 
+                       vector<LimbModule>* rs485_mods, std::vector<bool>* pb_state_,
+                       std::mutex* mtx_);
   void refreshWindow();
 
   int term_max_x_;
@@ -114,11 +124,18 @@ class Console {
 
   HipModule* modL_ptr_;
   HipModule* modR_ptr_;
+  
+  // Individual hip motor pointers
+  HipMotor* hip_motor_LF_;
+  HipMotor* hip_motor_LH_;
+  HipMotor* hip_motor_RF_;
+  HipMotor* hip_motor_RH_;
+  
   vector<LimbModule>* limb_modules_ptr_;
 
   std::mutex* main_mtx_;
   std::vector<bool>* powerboard_state_;
-  ModeFsm* fsm_;
+  // ModeFsm* fsm_;
 
   mutex input_mutex_;
   thread t_frontend_;

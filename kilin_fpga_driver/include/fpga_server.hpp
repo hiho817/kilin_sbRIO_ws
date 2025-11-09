@@ -14,6 +14,7 @@
 #include "fpga_handler.hpp"
 #include "fsm.hpp"
 #include "hip_module.hpp"
+#include "hip_motor.hpp"
 #include "limb_module.hpp"
 
 #ifndef CONFIG_PATH
@@ -54,11 +55,19 @@ class Kilin {
 
  private:
   /* robot state */
-  std::vector<HipModule> hip_module_list_;
+  // Shared CAN IO objects (one per CAN port)
+  ModuleIO_CAN* can_io_L_;  // Shared by LF and LH motors
+  ModuleIO_CAN* can_io_R_;  // Shared by RF and RH motors
+  
+  // Individual hip motors (4 motors: LF, RF, LH, RH)
+  HipMotor* hip_motor_LF_;  // Left Front (CAN_L, motor_index 0)
+  HipMotor* hip_motor_LH_;  // Left Hind (CAN_L, motor_index 1)
+  HipMotor* hip_motor_RF_;  // Right Front (CAN_R, motor_index 0)
+  HipMotor* hip_motor_RH_;  // Right Hind (CAN_R, motor_index 1)
+  
   std::vector<LimbModule> limb_modules_list_;
   ModeFsm fsm_;
   bool HALL_CALIBRATED_;
-  int can_modules_num_;
   int timeout_cnt_;
   int max_timeout_cnt_;
 

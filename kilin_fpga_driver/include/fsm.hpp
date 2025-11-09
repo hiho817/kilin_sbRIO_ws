@@ -10,7 +10,7 @@
 
 #include "Motor.pb.h"
 #include "Power.pb.h"
-#include "hip_module.hpp"
+#include "hip_motor.hpp"
 
 enum class Module_ID { L_MODULE, R_MODULE };
 
@@ -18,15 +18,15 @@ enum class Scenario { ROBOT, SINGLE_MODULE };
 
 class ModeFsm {
  public:
-  /* pass modules vector by reference*/
-  ModeFsm(std::vector<HipModule>* module_list_, std::vector<bool>* pb_state_);
+  /* pass motors vector by reference*/
+  ModeFsm(std::vector<HipMotor>* motors, std::vector<bool>* pb_state_);
   ModeFsm() {}
   Mode workingMode_;
   Mode prev_workingMode_;
 
   Scenario scenario_;
 
-  std::vector<HipModule>* hip_module_list_;
+  std::vector<HipMotor>* hip_motor_list_;
   std::vector<bool>* pb_state_;
 
   bool hall_calibrated;
@@ -37,8 +37,8 @@ class ModeFsm {
   double dt_ = 0.001;      // second
   double cal_vel_ = 0.25;  // rad/s
   double cal_tol_ = 0.05;
-  double cal_dir_[2][2];
-  double cal_command[2][2];
+  double cal_dir_[4];
+  double cal_command[4];
 
   bool* NO_CAN_TIMEDOUT_ERROR_;
   bool* NO_SWITCH_TIMEDOUT_ERROR_;

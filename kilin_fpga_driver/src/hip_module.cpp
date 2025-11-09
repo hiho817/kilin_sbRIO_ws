@@ -1,7 +1,6 @@
 #include <hip_module.hpp>
 
-HipModule::HipModule(std::string label, YAML::Node config, NiFpga_Status _status,
-                     NiFpga_Session _fpga_session)
+HipModule::HipModule(std::string label, YAML::Node config, NiFpga_Status _status, NiFpga_Session _fpga_session)
     : label_(label), config_(config), enable_(false) {
   load_config();
 
@@ -34,7 +33,7 @@ HipModule::HipModule(std::string label, YAML::Node config, NiFpga_Status _status
   rxdata_buffer_[0].position_ = 0;
   rxdata_buffer_[0].torque_ = 0;
   rxdata_buffer_[0].velocity_ = 0;
-  rxdata_buffer_[0].calibrate_finish_ = 0;
+  rxdata_buffer_[0].cal_stat_ = 0;
   rxdata_buffer_[0].CAN_id_ = 0;
   rxdata_buffer_[0].version_ = 0;
 
@@ -43,7 +42,7 @@ HipModule::HipModule(std::string label, YAML::Node config, NiFpga_Status _status
   rxdata_buffer_[1].position_ = 0;
   rxdata_buffer_[1].torque_ = 0;
   rxdata_buffer_[1].velocity_ = 0;
-  rxdata_buffer_[1].calibrate_finish_ = 0;
+  rxdata_buffer_[1].cal_stat_ = 0;
   rxdata_buffer_[1].CAN_id_ = 0;
   rxdata_buffer_[1].version_ = 0;
 
@@ -90,8 +89,7 @@ void HipModule::load_config() {
   std::cout << "CAN PORT: " << config_[label_]["CAN_PORT"].as<std::string>() << std::endl;
 
   std::cout << "Motor_F: " << std::endl;
-  std::cout << std::setw(14) << "  FW_Version: " << std::setw(13) << motor_f.fw_version_
-            << std::endl;
+  std::cout << std::setw(14) << "  FW_Version: " << std::setw(13) << motor_f.fw_version_ << std::endl;
   std::cout << std::setw(14) << "  CAN_ID: " << std::setw(13) << motor_f.CAN_ID_ << std::endl;
   std::cout << std::setw(14) << "  KP: " << std::setw(13) << motor_f.kp_ << std::endl;
   std::cout << std::setw(14) << "  KI: " << std::setw(13) << motor_f.ki_ << std::endl;
@@ -101,8 +99,7 @@ void HipModule::load_config() {
   std::cout << std::setw(14) << "---------------------------" << std::endl;
 
   std::cout << "Motor_H: " << std::endl;
-  std::cout << std::setw(14) << "  FW_Version: " << std::setw(13) << motor_h.fw_version_
-            << std::endl;
+  std::cout << std::setw(14) << "  FW_Version: " << std::setw(13) << motor_h.fw_version_ << std::endl;
   std::cout << std::setw(14) << "  CAN_ID: " << std::setw(13) << motor_h.CAN_ID_ << std::endl;
   std::cout << std::setw(14) << "  KP: " << std::setw(13) << motor_h.kp_ << std::endl;
   std::cout << std::setw(14) << "  KI: " << std::setw(13) << motor_h.ki_ << std::endl;
@@ -132,22 +129,45 @@ void HipModule::CAN_setup() {
   io_.set_ni_timeout_us(CAN_timeout_us);
 }
 
-void HipModule::CAN_set_mode(Mode mode) { 
-  io_.set_ni_CAN_id_fc((int)mode, (int)mode); 
-}
+void HipModule::CAN_set_mode(Mode mode) { io_.set_ni_CAN_id_fc((int)mode, (int)mode); }
 
 void HipModule::CAN_send_command() {
-  uint8_t txmsg_id1[8];
-  uint8_t txmsg_id2[8];
+  uint8_t txmsg_id1[8] = {0};
+  uint8_t txmsg_id2[8] = {0};
 
-  CAN_encode_(txmsg_id1, txdata_buffer_[0]);
-  CAN_encode_(txmsg_id2, txdata_buffer_[1]);
-
+  // Determine what data to send based on current mode
   uint32_t fc1, fc2;
   io_.get_ni_CAN_id_fc(&fc1, &fc2);
 
-  if (fc1 == 1) txmsg_id1[0] = 255;
-  if (fc2 == 1) txmsg_id2[0] = 255;
+  // Motor 1 (id1) - Handle different modes
+  switch (static_cast<Mode>(fc1)) {
+    case Mode::CONFIG:
+      // CONFIG mode: then set first byte to 255
+      txmsg_id1[0] = 255;
+      break;
+    case Mode::CONTROL:
+      // CONTROL mode: send control commands normally
+      CAN_encode_(txmsg_id1, txdata_buffer_[0]);
+      break;
+    default:
+      // HALL_CALIBRATE, REST, SET_ZERO, MOTOR: already zeroed or data ignored
+      break;
+  }
+
+  // Motor 2 (id2) - Handle different modes
+  switch (static_cast<Mode>(fc2)) {
+    case Mode::CONFIG:
+      // CONFIG mode: then set first byte to 255
+      txmsg_id2[0] = 255;
+      break;
+    case Mode::CONTROL:
+      // CONTROL mode: send control commands normally
+      CAN_encode_(txmsg_id2, txdata_buffer_[1]);
+      break;
+    default:
+      // HALL_CALIBRATE, REST, SET_ZERO, MOTOR: already zeroed or data ignored
+      break;
+  }
 
   io_.set_ni_tx_data(txmsg_id1, txmsg_id2);
   usleep(100);
@@ -194,7 +214,7 @@ void HipModule::CAN_decode_(const uint8_t (&rxmsg)[8], CAN_rxdata* rxdata) {
   rxdata->velocity_ = uint_to_float_(vel_raw, V_MIN, V_MAX, 16);
   rxdata->torque_ = uint_to_float_(torque_raw, T_MIN, T_MAX, 16);
   rxdata->version_ = ver_raw;
-  rxdata->calibrate_finish_ = cal_raw;
+  rxdata->cal_stat_ = cal_raw;
   rxdata->mode_state_ = mode_raw;
 
   if (mode_raw == _SET_ZERO)

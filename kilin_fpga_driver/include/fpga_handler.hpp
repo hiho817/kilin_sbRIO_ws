@@ -48,13 +48,20 @@ class ModuleIO_CAN {
   // Low-level I/O functions
   void set_ni_CAN_transmit(NiFpga_Bool value);
   void set_ni_CAN_id(uint32_t id1, uint32_t id2);
+  void set_ni_CAN_id1(uint32_t id1);  // Set CAN ID for motor 1 only
+  void set_ni_CAN_id2(uint32_t id2);  // Set CAN ID for motor 2 only
   void set_ni_port_select(const NiFpga_Bool* array);
   void set_ni_CAN_id_fc(uint32_t id1_fc, uint32_t id2_fc);
   void set_ni_timeout_us(uint32_t value);
-  void set_ni_tx_data(const uint8_t* tx_arr1, const uint8_t* tx_arr2);
+  void set_ni_tx_data(const uint8_t* tx_arr1, const uint8_t* tx_arr2);  // Send both motors at once
+  
+  // New methods for individual motor TX data setting (directly to FPGA registers)
+  void set_ni_tx_data_motor1(const uint8_t* tx_arr);  // Motor 1 (motor_index 0) - writes to r_tx_buf_id1_
+  void set_ni_tx_data_motor2(const uint8_t* tx_arr);  // Motor 2 (motor_index 1) - writes to r_tx_buf_id2_
 
   void get_ni_CAN_id_fc(uint32_t* fc1, uint32_t* fc2);
   void get_ni_rx_data(uint8_t* rx_arr1, uint8_t* rx_arr2);
+  void get_ni_tx_data(uint8_t* tx_arr1, uint8_t* tx_arr2);  // Get TX data for both motors
 
   NiFpga_Bool get_ni_CAN_complete();
   NiFpga_Bool get_ni_CAN_success();

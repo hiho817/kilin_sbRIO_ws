@@ -35,7 +35,7 @@ typedef struct CAN_rxdata {
   float velocity_;
   float torque_;
   int version_;
-  int calibrate_finish_;
+  int cal_stat_;
   int mode_state_;
   Mode mode_;
 } CAN_rxdata;

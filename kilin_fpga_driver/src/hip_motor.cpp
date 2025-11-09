@@ -1,14 +1,14 @@
 #include <hip_motor.hpp>
 
 HipMotor::HipMotor(std::string label, YAML::Node config, NiFpga_Status _status,
-                   NiFpga_Session _fpga_session, int _motor_index)
-    : label_(label), config_(config), motor_index_(_motor_index), enable_(false) {
+                   NiFpga_Session _fpga_session, int _motor_index, ModuleIO_CAN* shared_io)
+    : label_(label), config_(config), motor_index_(_motor_index), enable_(false), io_(shared_io) {
   load_config();
 
   CAN_tx_timedout_ = false;
   CAN_rx_timedout_ = false;
   CAN_mtr_timedout_ = false;
-
+  
   // Initialize mode
   current_mode_ = Mode::REST;
   prev_mode_ = Mode::REST;
@@ -25,15 +25,17 @@ HipMotor::HipMotor(std::string label, YAML::Node config, NiFpga_Status _status,
   rxdata_buffer_.position_ = 0;
   rxdata_buffer_.torque_ = 0;
   rxdata_buffer_.velocity_ = 0;
-  rxdata_buffer_.calibrate_finish_ = 0;
+  rxdata_buffer_.cal_stat_ = 0;
   rxdata_buffer_.CAN_id_ = 0;
   rxdata_buffer_.version_ = 0;
 
-  io_ = ModuleIO_CAN(_status, _fpga_session, CAN_port_);
-  CAN_first_transmit_ = true;
+  // io_ is already set from constructor parameter (shared between motors)
 
   /* setup motor CAN ID, port selection and timeout_us */
   CAN_setup();
+  
+  /* Set initial FC to match current_mode_ (REST) */
+  set_mode_internal_(current_mode_);
 }
 
 void HipMotor::load_config() {
@@ -69,35 +71,55 @@ void HipMotor::load_config() {
 }
 
 void HipMotor::CAN_timeoutCheck() {
-  CAN_rx_timedout_ = io_.get_ni_rx_timeout();
-  CAN_tx_timedout_ = io_.get_ni_tx_timeout();
+  if (!io_) {
+    return;  // Safety check - io_ pointer must be valid
+  }
+  
+  CAN_rx_timedout_ = io_->get_ni_rx_timeout();
+  CAN_tx_timedout_ = io_->get_ni_tx_timeout();
   CAN_mtr_timedout_ = CAN_rx_timedout_ || CAN_tx_timedout_;
 }
 
 void HipMotor::CAN_setup() {
-  // For a single motor, we still need to set both IDs but only use one
-  // The other motor on the same CAN port will be handled by another HipMotor instance
-  int other_motor_id = 0;  // Placeholder, will be overridden by the other motor instance
-  
+  // Set this motor's CAN ID individually (won't overwrite the other motor's ID)
   if (motor_index_ == 0) {
-    io_.set_ni_CAN_id(motor_info_.CAN_ID_, other_motor_id);
+    std::cout << "  Setting CAN ID1 = " << motor_info_.CAN_ID_ << " for " << label_ << " Motor_F" << std::endl;
+    io_->set_ni_CAN_id1(motor_info_.CAN_ID_);
   } else {
-    io_.set_ni_CAN_id(other_motor_id, motor_info_.CAN_ID_);
+    std::cout << "  Setting CAN ID2 = " << motor_info_.CAN_ID_ << " for " << label_ << " Motor_H" << std::endl;
+    io_->set_ni_CAN_id2(motor_info_.CAN_ID_);
   }
 
-  /* select the appropriate port */
-  NiFpga_Bool _bool_arr[2] = {motor_index_ == 0 ? 1 : 0, motor_index_ == 1 ? 1 : 0};
-  io_.set_ni_port_select(_bool_arr);
+  /* Enable BOTH motors on the CAN bus (both ID1 and ID2) */
+  NiFpga_Bool _bool_arr[2] = {1, 1};  // Enable both motors
+  io_->set_ni_port_select(_bool_arr);
 
-  io_.set_ni_timeout_us(CAN_timeout_us);
+  io_->set_ni_timeout_us(CAN_timeout_us);
 }
 
 void HipMotor::CAN_send_command() {
+  if (!io_) {
+    return;  // Safety check - io_ pointer must be valid
+  }
+  
+  // If in HALL_CALIBRATE mode, send all zeros
+  CAN_txdata tx_data_to_send;
+  if (current_mode_ == Mode::HALL_CALIBRATE) {
+    tx_data_to_send.position_ = 0;
+    tx_data_to_send.torque_ = 0;
+    tx_data_to_send.KP_ = 0;
+    tx_data_to_send.KI_ = 0;
+    tx_data_to_send.KD_ = 0;
+    tx_data_to_send.KT_ = 0;
+  } else {
+    tx_data_to_send = txdata_buffer_;
+  }
+  
   uint8_t txmsg[8];
-  CAN_encode_(txmsg, txdata_buffer_);
+  CAN_encode_(txmsg, tx_data_to_send);
 
   uint32_t fc1, fc2;
-  io_.get_ni_CAN_id_fc(&fc1, &fc2);
+  io_->get_ni_CAN_id_fc(&fc1, &fc2);
 
   if (motor_index_ == 0 && fc1 == 1) {
     txmsg[0] = 255;
@@ -105,28 +127,31 @@ void HipMotor::CAN_send_command() {
     txmsg[0] = 255;
   }
 
-  // Send to appropriate port
-  uint8_t dummy[8] = {0};
+  // Each motor sets its own TX data in the shared IO buffer
   if (motor_index_ == 0) {
-    io_.set_ni_tx_data(txmsg, dummy);
+    io_->set_ni_tx_data_motor1(txmsg);
   } else {
-    io_.set_ni_tx_data(dummy, txmsg);
+    io_->set_ni_tx_data_motor2(txmsg);
   }
-  
-  usleep(100);
-  io_.set_ni_CAN_transmit(1);
 }
 
 void HipMotor::CAN_receive_feedback() {
+  if (!io_) {
+    return;  // Safety check - io_ pointer must be valid
+  }
+  
   uint8_t rxmsg_id1[8];
   uint8_t rxmsg_id2[8];
-  io_.get_ni_rx_data(rxmsg_id1, rxmsg_id2);
+  io_->get_ni_rx_data(rxmsg_id1, rxmsg_id2);
   
   if (motor_index_ == 0) {
     CAN_decode_(rxmsg_id1, &rxdata_buffer_);
   } else {
     CAN_decode_(rxmsg_id2, &rxdata_buffer_);
   }
+  
+  // Don't auto-switch here to avoid recursion
+  // External code should check cal_stat_ and switch modes
 }
 
 void HipMotor::CAN_encode_(uint8_t (&txmsg)[8], const CAN_txdata& txdata) {
@@ -161,7 +186,7 @@ void HipMotor::CAN_decode_(const uint8_t (&rxmsg)[8], CAN_rxdata* rxdata) {
   rxdata->velocity_ = uint_to_float_(vel_raw, V_MIN, V_MAX, 16);
   rxdata->torque_ = uint_to_float_(torque_raw, T_MIN, T_MAX, 16);
   rxdata->version_ = ver_raw;
-  rxdata->calibrate_finish_ = cal_raw;
+  rxdata->cal_stat_ = cal_raw;
   rxdata->mode_state_ = mode_raw;
 
   if (mode_raw == _SET_ZERO)
@@ -203,13 +228,28 @@ bool HipMotor::switch_mode(Mode next_mode) {
     set_mode_internal_(next_mode);
     
     // Send and receive
-    io_.set_ni_CAN_transmit(true);
+    CAN_send_command();
+    io_->set_ni_CAN_transmit(true);
+    usleep(1000);  // Short delay for transmission
     CAN_receive_feedback();
 
     // Check if mode switched
     if (next_mode == Mode::SET_ZERO) {
       // For SET_ZERO, check if position is near zero
       if (fabs(rxdata_buffer_.position_) <= 0.01) {
+        success = true;
+      }
+    } else if (next_mode == Mode::CONFIG) {
+      // For CONFIG, motor doesn't report CONFIG state back
+      // Just accept it immediately (FC is set, motor accepts config writes)
+      success = true;
+    } else if (next_mode == Mode::HALL_CALIBRATE) {
+      // For HALL_CALIBRATE, motor handles calibration autonomously
+      // Just accept it immediately without waiting for feedback
+      success = true;
+    } else if (next_mode == Mode::MOTOR) {
+      // For MOTOR mode, check mode feedback
+      if (rxdata_buffer_.mode_ == next_mode) {
         success = true;
       }
     } else {
@@ -228,6 +268,19 @@ bool HipMotor::switch_mode(Mode next_mode) {
   if (success) {
     prev_mode_ = current_mode_;
     current_mode_ = next_mode;
+    
+    // After starting HALL_CALIBRATE, switch FC to CONFIG to monitor cal_stat_
+    if (next_mode == Mode::HALL_CALIBRATE) {
+      usleep(10000);  // Small delay after starting calibration
+      set_mode_internal_(Mode::CONFIG);  // Switch to CONFIG FC to monitor calibration
+    }
+    
+    // After entering MOTOR mode, immediately switch FC to CONTROL for position commands
+    // This ensures FC goes from 4 to 5 automatically
+    if (next_mode == Mode::MOTOR) {
+      usleep(10000);  // Small delay to ensure MOTOR mode is confirmed
+      set_mode_internal_(Mode::CONTROL);
+    }
   }
 
   return success;
@@ -236,12 +289,12 @@ bool HipMotor::switch_mode(Mode next_mode) {
 // Set mode in CAN function code
 void HipMotor::set_mode_internal_(Mode mode) {
   uint32_t fc1, fc2;
-  io_.get_ni_CAN_id_fc(&fc1, &fc2);
+  io_->get_ni_CAN_id_fc(&fc1, &fc2);
   
   if (motor_index_ == 0) {
-    io_.set_ni_CAN_id_fc((int)mode, fc2);
+    io_->set_ni_CAN_id_fc((int)mode, fc2);
   } else {
-    io_.set_ni_CAN_id_fc(fc1, (int)mode);
+    io_->set_ni_CAN_id_fc(fc1, (int)mode);
   }
 }
 
@@ -250,7 +303,7 @@ void HipMotor::update_motor() {
   if (!enable_) {
     return;
   }
-
+  
   CAN_send_command();
   CAN_receive_feedback();
   CAN_timeoutCheck();

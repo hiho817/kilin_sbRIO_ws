@@ -45,17 +45,29 @@ Kilin::Kilin() {
   HALL_CALIBRATED_ = false;
   max_timeout_cnt_ = 100;
 
+  // Initialize CAN IO pointers to nullptr
+  can_io_L_ = nullptr;
+  can_io_R_ = nullptr;
+
+  // Initialize motor pointers to nullptr
+  hip_motor_LF_ = nullptr;
+  hip_motor_LH_ = nullptr;
+  hip_motor_RF_ = nullptr;
+  hip_motor_RH_ = nullptr;
+
   powerboard_state_.push_back(digital_switch_);
   powerboard_state_.push_back(signal_switch_);
   powerboard_state_.push_back(power_switch_);
 
-  ModeFsm fsm(&hip_module_list_, &powerboard_state_);
-  fsm_ = fsm;
-  fsm_.NO_CAN_TIMEDOUT_ERROR_ = &NO_CAN_TIMEDOUT_ERROR_;
-  fsm_.NO_SWITCH_TIMEDOUT_ERROR_ = &NO_SWITCH_TIMEDOUT_ERROR_;
+  // Initialize FSM without hip modules (motors manage their own modes now)
+  // ModeFsm fsm(nullptr, &powerboard_state_);
+  // fsm_ = fsm;
+  // fsm_.NO_CAN_TIMEDOUT_ERROR_ = &NO_CAN_TIMEDOUT_ERROR_;
+  // fsm_.NO_SWITCH_TIMEDOUT_ERROR_ = &NO_SWITCH_TIMEDOUT_ERROR_;
 
   load_config_();
-  console_.init(&fpga_, &hip_module_list_, &limb_modules_list_, &powerboard_state_, &fsm_, &main_mtx_);
+  console_.init_hip_motors(&fpga_, hip_motor_LF_, hip_motor_LH_, hip_motor_RF_, hip_motor_RH_,
+                           &limb_modules_list_, &powerboard_state_, &main_mtx_);
 
   fpga_.set_ni_irq_period(main_irq_period_us_, can_irq_period_us_);
 
@@ -84,14 +96,36 @@ void Kilin::load_config_() {
   main_irq_period_us_ = yaml_node_["MainLoop_period_us"].as<int>();
   can_irq_period_us_ = yaml_node_["CANLoop_period_us"].as<int>();
 
-  /* initialize hip modules */
-  can_modules_num_ = yaml_node_["Number_of_modules"].as<int>();
-  for (int i = 0; i < can_modules_num_; i++) {
-    std::string label = yaml_node_["Modules_list"][i].as<std::string>();
-    HipModule module(label, yaml_node_, fpga_.get_fpga_status(), fpga_.session);
-    hip_module_list_.push_back(module);
+  /* Initialize individual hip motors (4 motors total) */
+  // Each motor is independent with its own mode control
+  // But motors on the same CAN port share the same IO object
+  cout << "Initializing individual hip motors..." << endl;
+
+  // Create shared CAN IO objects (one per CAN port)
+  can_io_L_ = new ModuleIO_CAN(fpga_.get_fpga_status(), fpga_.session, "MOD1CAN0");
+  can_io_R_ = new ModuleIO_CAN(fpga_.get_fpga_status(), fpga_.session, "MOD1CAN1");
+
+  // Left motors (both share can_io_L_)
+  hip_motor_LF_ =
+      new HipMotor("L_Module", yaml_node_, fpga_.get_fpga_status(), fpga_.session, 0, can_io_L_);  // Motor_F
+  hip_motor_LH_ =
+      new HipMotor("L_Module", yaml_node_, fpga_.get_fpga_status(), fpga_.session, 1, can_io_L_);  // Motor_H
+
+  // Right motors (both share can_io_R_)
+  hip_motor_RF_ =
+      new HipMotor("R_Module", yaml_node_, fpga_.get_fpga_status(), fpga_.session, 0, can_io_R_);  // Motor_F
+  hip_motor_RH_ =
+      new HipMotor("R_Module", yaml_node_, fpga_.get_fpga_status(), fpga_.session, 1, can_io_R_);  // Motor_H
+
+  // Validation
+  if (!can_io_L_ || !can_io_R_) {
+    cout << "[ERROR] Failed to create CAN IO objects!" << endl;
   }
-  cout << "Loaded " << can_modules_num_ << " hip modules from config file." << std::endl;
+  if (!hip_motor_LF_ || !hip_motor_LH_ || !hip_motor_RF_ || !hip_motor_RH_) {
+    cout << "[ERROR] Failed to create hip motor objects!" << endl;
+  }
+
+  cout << "Loaded 4 individual hip motors (LF, LH, RF, RH)" << std::endl;
 
   // Initialize limb modules for RS485 communication (4 modules, one per RS485 port)
   int rs485_modules_num_ = 4;
@@ -178,9 +212,9 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
   power_msg::PowerStateStamped power_fb_msg;
   motor_msg::MotorStateStamped motor_fb_msg;
 
-  fsm_.runFsm(motor_fb_msg, motor_cmd_data);
+  // fsm_.runFsm(motor_fb_msg, motor_cmd_data);
   motor_message_updated = 0;
-  HALL_CALIBRATED_ = fsm_.hall_calibrated;
+  // HALL_CALIBRATED_ = fsm_.hall_calibrated;
 
   mutex_.unlock();
 
@@ -202,17 +236,17 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
       powerboard_state_.at(1) = power_cmd_data.signal();
       powerboard_state_.at(2) = power_cmd_data.power();
 
-      if (power_cmd_data.robot_mode() == (int)Mode::MOTOR && fsm_.workingMode_ != Mode::MOTOR)
-        fsm_.switchMode(Mode::MOTOR);
-      else if (power_cmd_data.robot_mode() == (int)Mode::HALL_CALIBRATE && fsm_.workingMode_ != Mode::HALL_CALIBRATE &&
-               fsm_.workingMode_ != Mode::MOTOR)
-        fsm_.switchMode(Mode::HALL_CALIBRATE);
-      else if (power_cmd_data.robot_mode() == (int)Mode::SET_ZERO && fsm_.workingMode_ != Mode::SET_ZERO)
-        fsm_.switchMode(Mode::SET_ZERO);
-      else if (power_cmd_data.robot_mode() == (int)Mode::CONFIG && fsm_.workingMode_ != Mode::CONFIG)
-        fsm_.switchMode(Mode::CONFIG);
-      else if (power_cmd_data.robot_mode() == (int)Mode::REST && fsm_.workingMode_ != Mode::REST)
-        fsm_.switchMode(Mode::REST);
+      // if (power_cmd_data.robot_mode() == (int)Mode::MOTOR && fsm_.workingMode_ != Mode::MOTOR)
+      //   fsm_.switchMode(Mode::MOTOR);
+      // else if (power_cmd_data.robot_mode() == (int)Mode::HALL_CALIBRATE && fsm_.workingMode_ != Mode::HALL_CALIBRATE &&
+      //          fsm_.workingMode_ != Mode::MOTOR)
+      //   fsm_.switchMode(Mode::HALL_CALIBRATE);
+      // else if (power_cmd_data.robot_mode() == (int)Mode::SET_ZERO && fsm_.workingMode_ != Mode::SET_ZERO)
+      //   fsm_.switchMode(Mode::SET_ZERO);
+      // else if (power_cmd_data.robot_mode() == (int)Mode::CONFIG && fsm_.workingMode_ != Mode::CONFIG)
+      //   fsm_.switchMode(Mode::CONFIG);
+      // else if (power_cmd_data.robot_mode() == (int)Mode::REST && fsm_.workingMode_ != Mode::REST)
+      //   fsm_.switchMode(Mode::REST);
       pwrb_message_updated = 0;
     }
   }
@@ -223,20 +257,75 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
 }
 
 void Kilin::canLoop_() {
-  for (int i = 0; i < 4; i++) {
-    if (hip_module_list_[i].enable_ && powerboard_state_.at(2) == true) {
-      hip_module_list_[i].CAN_receive_feedback();
-      hip_module_list_[i].CAN_timeoutCheck();
+  // Update each motor individually
+  // Power switch must be on (powerboard_state_.at(2))
+  if (powerboard_state_.at(2) == true) {
+    // Step 1: Send commands and transmit for left CAN bus
+    if (hip_motor_LF_ && hip_motor_LF_->enable_) {
+      hip_motor_LF_->CAN_send_command();
+    }
+    if (hip_motor_LH_ && hip_motor_LH_->enable_) {
+      hip_motor_LH_->CAN_send_command();
+    }
+    if (can_io_L_) {
+      usleep(100);
+      can_io_L_->set_ni_CAN_transmit(1);
+    }
 
-      if (hip_module_list_[i].CAN_module_timedout)
+    // Step 2: Send commands and transmit for right CAN bus
+    if (hip_motor_RF_ && hip_motor_RF_->enable_) {
+      hip_motor_RF_->CAN_send_command();
+    }
+    if (hip_motor_RH_ && hip_motor_RH_->enable_) {
+      hip_motor_RH_->CAN_send_command();
+    }
+    if (can_io_R_) {
+      usleep(100);
+      can_io_R_->set_ni_CAN_transmit(1);
+    }
+
+    // Step 3: Receive feedback for all motors
+    if (hip_motor_LF_ && hip_motor_LF_->enable_) {
+      hip_motor_LF_->CAN_receive_feedback();
+      hip_motor_LF_->CAN_timeoutCheck();
+      if (hip_motor_LF_->CAN_mtr_timedout_)
         timeout_cnt_++;
       else
         timeout_cnt_ = 0;
-      if (timeout_cnt_ < max_timeout_cnt_) {
-        hip_module_list_[i].CAN_send_command();
-        NO_CAN_TIMEDOUT_ERROR_ = true;
-      } else
-        NO_CAN_TIMEDOUT_ERROR_ = false;
+    }
+
+    if (hip_motor_LH_ && hip_motor_LH_->enable_) {
+      hip_motor_LH_->CAN_receive_feedback();
+      hip_motor_LH_->CAN_timeoutCheck();
+      if (hip_motor_LH_->CAN_mtr_timedout_)
+        timeout_cnt_++;
+      else
+        timeout_cnt_ = 0;
+    }
+
+    if (hip_motor_RF_ && hip_motor_RF_->enable_) {
+      hip_motor_RF_->CAN_receive_feedback();
+      hip_motor_RF_->CAN_timeoutCheck();
+      if (hip_motor_RF_->CAN_mtr_timedout_)
+        timeout_cnt_++;
+      else
+        timeout_cnt_ = 0;
+    }
+
+    if (hip_motor_RH_ && hip_motor_RH_->enable_) {
+      hip_motor_RH_->CAN_receive_feedback();
+      hip_motor_RH_->CAN_timeoutCheck();
+      if (hip_motor_RH_->CAN_mtr_timedout_)
+        timeout_cnt_++;
+      else
+        timeout_cnt_ = 0;
+    }
+
+    // Update timeout error flag
+    if (timeout_cnt_ < max_timeout_cnt_) {
+      NO_CAN_TIMEDOUT_ERROR_ = true;
+    } else {
+      NO_CAN_TIMEDOUT_ERROR_ = false;
     }
   }
 }
@@ -261,19 +350,10 @@ void Kilin::powerboardPack(power_msg::PowerStateStamped& power_dashboard_reply) 
   power_dashboard_reply.set_signal(powerboard_state_.at(1));
   power_dashboard_reply.set_power(powerboard_state_.at(2));
 
-  if (fsm_.hall_calibrated == true && NO_SWITCH_TIMEDOUT_ERROR_ == true && NO_CAN_TIMEDOUT_ERROR_ == true)
+  if (NO_SWITCH_TIMEDOUT_ERROR_ == true && NO_CAN_TIMEDOUT_ERROR_ == true)
     power_dashboard_reply.set_clean(true);
   else
     power_dashboard_reply.set_clean(false);
-
-  if (fsm_.workingMode_ == Mode::REST)
-    power_dashboard_reply.set_robot_mode(power_msg::REST_MODE);
-  else if (fsm_.workingMode_ == Mode::HALL_CALIBRATE)
-    power_dashboard_reply.set_robot_mode(power_msg::HALL_CALIBRATE);
-  else if (fsm_.workingMode_ == Mode::MOTOR)
-    power_dashboard_reply.set_robot_mode(power_msg::MOTOR_MODE);
-  else if (fsm_.workingMode_ == Mode::SET_ZERO)
-    power_dashboard_reply.set_robot_mode(power_msg::SET_ZERO);
 
   power_dashboard_reply.set_v_0(fpga_.pwrb_io.get_v_buf(0));
   power_dashboard_reply.set_i_0(fpga_.pwrb_io.get_i_buf(0));

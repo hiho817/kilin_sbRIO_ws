@@ -15,7 +15,7 @@
 class HipMotor {
  public:
   HipMotor(std::string _label, YAML::Node _config, NiFpga_Status _status,
-           NiFpga_Session _fpga_session, int _motor_index);
+           NiFpga_Session _fpga_session, int _motor_index, ModuleIO_CAN* shared_io);
   HipMotor() {}
 
   std::string label_;
@@ -23,16 +23,15 @@ class HipMotor {
   Motor_CAN motor_info_;
   int motor_index_;  // 0 or 1, indicates which motor on the CAN port
 
-  ModuleIO_CAN io_;
+  ModuleIO_CAN* io_;  // Shared pointer to CAN IO (shared between 2 motors on same port)
   std::string CAN_port_;
   bool enable_;
   int CAN_timeout_us;
-  bool CAN_first_transmit_;
 
   bool CAN_tx_timedout_;
   bool CAN_rx_timedout_;
   bool CAN_mtr_timedout_;
-
+  
   CAN_txdata txdata_buffer_;
   CAN_rxdata rxdata_buffer_;
 
@@ -64,7 +63,7 @@ class HipMotor {
   double get_position() const { return rxdata_buffer_.position_; }
   double get_velocity() const { return rxdata_buffer_.velocity_; }
   double get_torque() const { return rxdata_buffer_.torque_; }
-  int get_calibrate_status() const { return rxdata_buffer_.calibrate_finish_; }
+  int get_calibrate_status() const { return rxdata_buffer_.cal_stat_; }
   
  private:
   // CAN packet encoding/decoding

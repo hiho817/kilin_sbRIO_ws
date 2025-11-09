@@ -1,11 +1,15 @@
 #include <fsm.hpp>
 
-ModeFsm::ModeFsm(std::vector<HipModule>* modules, std::vector<bool>* pb_state) {
+ModeFsm::ModeFsm(std::vector<HipMotor>* motors, std::vector<bool>* pb_state) {
   workingMode_ = Mode::REST;
   prev_workingMode_ = Mode::REST;
 
-  hip_module_list_ = modules;
+  hip_motor_list_ = motors;
   pb_state_ = pb_state;
+
+  // Initialize error flag pointers to nullptr (will be set externally)
+  NO_CAN_TIMEDOUT_ERROR_ = nullptr;
+  NO_SWITCH_TIMEDOUT_ERROR_ = nullptr;
 
   hall_calibrated = false;
   hall_calibrate_status = 0;
@@ -13,6 +17,11 @@ ModeFsm::ModeFsm(std::vector<HipModule>* modules, std::vector<bool>* pb_state) {
 
 void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
                      const motor_msg::MotorCmdStamped& motor_cmd_msg) {
+  // Skip FSM logic if we don't have hip motors (using individual motor control instead)
+  if (!hip_motor_list_) {
+    return;
+  }
+  
   // position = P_CMD_MAX is to make sure the data received from CONFIG function code is the default
   // one
   switch (workingMode_) {
@@ -20,20 +29,13 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
       // TODO: pb_state = { digital_switch_, signal_switch_, power_switch_ }
       if (pb_state_ && pb_state_->size() >= 3 && pb_state_->at(2) == true) {
         publishMsg(motor_fb_msg);
-        for (auto& mod : *hip_module_list_) {
-          int index = 0;
-          if (mod.enable_) {
-            mod.txdata_buffer_[0].position_ = 0;
-            mod.txdata_buffer_[0].torque_ = 0;
-            mod.txdata_buffer_[0].KP_ = 0;
-            mod.txdata_buffer_[0].KI_ = 0;
-            mod.txdata_buffer_[0].KD_ = 0;
-
-            mod.txdata_buffer_[1].position_ = 0;
-            mod.txdata_buffer_[1].torque_ = 0;
-            mod.txdata_buffer_[1].KP_ = 0;
-            mod.txdata_buffer_[1].KI_ = 0;
-            mod.txdata_buffer_[1].KD_ = 0;
+        for (auto& motor : *hip_motor_list_) {
+          if (motor.enable_) {
+            motor.txdata_buffer_.position_ = 0;
+            motor.txdata_buffer_.torque_ = 0;
+            motor.txdata_buffer_.KP_ = 0;
+            motor.txdata_buffer_.KI_ = 0;
+            motor.txdata_buffer_.KD_ = 0;
           }
         }
       }
@@ -42,41 +44,29 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
     case Mode::SET_ZERO: {
       if (pb_state_ && pb_state_->size() >= 3 && pb_state_->at(2) == true) {
         publishMsg(motor_fb_msg);
-        for (auto& mod : *hip_module_list_) {
-          if (mod.enable_) {
-            mod.txdata_buffer_[0].position_ = P_CMD_MAX;
-            mod.txdata_buffer_[0].torque_ = 0;
-            mod.txdata_buffer_[0].KP_ = 0;
-            mod.txdata_buffer_[0].KI_ = 0;
-            mod.txdata_buffer_[0].KD_ = 0;
-
-            mod.txdata_buffer_[1].position_ = P_CMD_MAX;
-            mod.txdata_buffer_[1].torque_ = 0;
-            mod.txdata_buffer_[1].KP_ = 0;
-            mod.txdata_buffer_[1].KI_ = 0;
-            mod.txdata_buffer_[1].KD_ = 0;
+        for (auto& motor : *hip_motor_list_) {
+          if (motor.enable_) {
+            motor.txdata_buffer_.position_ = P_CMD_MAX;
+            motor.txdata_buffer_.torque_ = 0;
+            motor.txdata_buffer_.KP_ = 0;
+            motor.txdata_buffer_.KI_ = 0;
+            motor.txdata_buffer_.KD_ = 0;
           }
         }
       }
     } break;
 
     case Mode::HALL_CALIBRATE: {
-      int module_enabled = 0;
+      int motor_enabled = 0;
 
-      for (int i = 0; i < 2; i++) {
-        if (hip_module_list_->at(i).enable_) {
-          hip_module_list_->at(i).txdata_buffer_[0].position_ = 0;
-          hip_module_list_->at(i).txdata_buffer_[0].torque_ = 0;
-          hip_module_list_->at(i).txdata_buffer_[0].KP_ = 0;
-          hip_module_list_->at(i).txdata_buffer_[0].KI_ = 0;
-          hip_module_list_->at(i).txdata_buffer_[0].KD_ = 0;
-
-          hip_module_list_->at(i).txdata_buffer_[1].position_ = 0;
-          hip_module_list_->at(i).txdata_buffer_[1].torque_ = 0;
-          hip_module_list_->at(i).txdata_buffer_[1].KP_ = 0;
-          hip_module_list_->at(i).txdata_buffer_[1].KI_ = 0;
-          hip_module_list_->at(i).txdata_buffer_[1].KD_ = 0;
-          module_enabled++;
+      for (int i = 0; i < 4; i++) {
+        if (hip_motor_list_->at(i).enable_) {
+          hip_motor_list_->at(i).txdata_buffer_.position_ = 0;
+          hip_motor_list_->at(i).txdata_buffer_.torque_ = 0;
+          hip_motor_list_->at(i).txdata_buffer_.KP_ = 0;
+          hip_motor_list_->at(i).txdata_buffer_.KI_ = 0;
+          hip_motor_list_->at(i).txdata_buffer_.KD_ = 0;
+          motor_enabled++;
         }
       }
       switch (hall_calibrate_status) {
@@ -86,33 +76,27 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
 
         case 0: {
           int cal_cnt = 0;
-          for (int i = 0; i < 2; i++) {
-            if (hip_module_list_->at(i).enable_ &&
-                hip_module_list_->at(i).rxdata_buffer_[0].calibrate_finish_ == 2 &&
-                hip_module_list_->at(i).rxdata_buffer_[1].calibrate_finish_ == 2)
+          for (int i = 0; i < 4; i++) {
+            if (hip_motor_list_->at(i).enable_ &&
+                hip_motor_list_->at(i).rxdata_buffer_.cal_stat_ == 2)
               cal_cnt++;
           }
-          if (cal_cnt == module_enabled && measure_offset == 0)
+          if (cal_cnt == motor_enabled && measure_offset == 0)
             hall_calibrate_status++;
-          else if (cal_cnt == module_enabled && measure_offset == 1)
+          else if (cal_cnt == motor_enabled && measure_offset == 1)
             hall_calibrate_status = -1;
         } break;
 
         case 1: {
-          for (int i = 0; i < 2; i++) {
-            if (hip_module_list_->at(i).enable_) {
-              hip_module_list_->at(i).CAN_rx_timedout_[0] = false;
-              hip_module_list_->at(i).CAN_rx_timedout_[1] = false;
-              hip_module_list_->at(i).CAN_tx_timedout_[0] = false;
-              hip_module_list_->at(i).CAN_tx_timedout_[1] = false;
+          for (int i = 0; i < 4; i++) {
+            if (hip_motor_list_->at(i).enable_) {
+              hip_motor_list_->at(i).CAN_rx_timedout_ = false;
+              hip_motor_list_->at(i).CAN_tx_timedout_ = false;
 
-              cal_command[i][0] = 0;
-              hip_module_list_->at(i).txdata_buffer_[0].position_ = 0;
-              cal_dir_[i][0] = 1;
-
-              cal_command[i][1] = 0;
-              hip_module_list_->at(i).txdata_buffer_[1].position_ = 0;
-              cal_dir_[i][1] = -1;
+              cal_command[i] = 0;
+              hip_motor_list_->at(i).txdata_buffer_.position_ = 0;
+              // Set calibration direction: motors 0 and 2 go positive, motors 1 and 3 go negative
+              cal_dir_[i] = (i % 2 == 0) ? 1 : -1;
             }
           }
           hall_calibrate_status++;
@@ -120,32 +104,29 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
 
         case 2: {
           int finish_cnt = 0;
-          for (int i = 0; i < 2; i++) {
-            if (hip_module_list_->at(i).enable_) {
-              for (int j = 0; j < 2; j++) {
-                double errj = 0;
-                errj = cal_command[i][j];
+          for (int i = 0; i < 4; i++) {
+            if (hip_motor_list_->at(i).enable_) {
+              double err = cal_command[i];
 
-                if (fabs(errj) < cal_tol_) {
-                  hip_module_list_->at(i).txdata_buffer_[j].position_ = 0;
-                  hip_module_list_->at(i).txdata_buffer_[j].torque_ = 0;
-                  hip_module_list_->at(i).txdata_buffer_[j].KP_ = 0;
-                  hip_module_list_->at(i).txdata_buffer_[j].KI_ = 0;
-                  hip_module_list_->at(i).txdata_buffer_[j].KD_ = 0;
-                  finish_cnt++;
-                } else {
-                  hip_module_list_->at(i).io_.set_ni_CAN_id_fc((int)Mode::CONTROL, (int)Mode::CONTROL);
-                  cal_command[i][j] += cal_dir_[i][j] * cal_vel_ * dt_;
-                  hip_module_list_->at(i).txdata_buffer_[j].position_ = cal_command[i][j];
-                  hip_module_list_->at(i).txdata_buffer_[j].torque_ = 0;
-                  hip_module_list_->at(i).txdata_buffer_[j].KP_ = 50;
-                  hip_module_list_->at(i).txdata_buffer_[j].KI_ = 0;
-                  hip_module_list_->at(i).txdata_buffer_[j].KD_ = 1.5;
-                }
+              if (fabs(err) < cal_tol_) {
+                hip_motor_list_->at(i).txdata_buffer_.position_ = 0;
+                hip_motor_list_->at(i).txdata_buffer_.torque_ = 0;
+                hip_motor_list_->at(i).txdata_buffer_.KP_ = 0;
+                hip_motor_list_->at(i).txdata_buffer_.KI_ = 0;
+                hip_motor_list_->at(i).txdata_buffer_.KD_ = 0;
+                finish_cnt++;
+              } else {
+                hip_motor_list_->at(i).io_->set_ni_CAN_id_fc((int)Mode::CONTROL, (int)Mode::CONTROL);
+                cal_command[i] += cal_dir_[i] * cal_vel_ * dt_;
+                hip_motor_list_->at(i).txdata_buffer_.position_ = cal_command[i];
+                hip_motor_list_->at(i).txdata_buffer_.torque_ = 0;
+                hip_motor_list_->at(i).txdata_buffer_.KP_ = 50;
+                hip_motor_list_->at(i).txdata_buffer_.KI_ = 0;
+                hip_motor_list_->at(i).txdata_buffer_.KD_ = 1.5;
               }
             }
           }
-          if (finish_cnt == 2 * module_enabled) hall_calibrate_status++;
+          if (finish_cnt == motor_enabled) hall_calibrate_status++;
         } break;
 
         case 3: {
@@ -159,67 +140,54 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
     case Mode::MOTOR: {
       /* Pubish feedback data from Motors */
       publishMsg(motor_fb_msg);
-      int index = 0;
-      for (auto& mod : *hip_module_list_) {
-        if (mod.enable_) {
-          /* Subscribe command from other nodes */
-          // initialize message
-          // update
-          if (*NO_CAN_TIMEDOUT_ERROR_ && *NO_SWITCH_TIMEDOUT_ERROR_) {
-            switch (index) {
-              /*********************************************/
-              // case 0:                  case 1:
-              // MOD1CAN0 (module_L)      MOD2CAN1 (module_R)
-              //  CAN1 LF (module_a)       CAN1 RF (module_b)
-              //  CAN2 LH (module_d)       CAN2 RH (module_c)
-              /*********************************************/
-              //  +-------+--------+       +--------+-------+
-              //  | CAN0-port0     |       | CAN1-port0     |
-              //  | module_a (LF)  |       | module_b (RF)  |
-              //  | Left Front Hip |       | Right Front Hip|
-              //  +----------------+       +----------------+
-              //
-              //  +----------------+       +----------------+
-              //  | CAN0-port1     |       | CAN1-port1     |
-              //  | module_d (LH)  |       | module_c (RH)  |
-              //  | Left Hind Hip  |       | Right Hind Hip |
-              //  +----------------+       +----------------+
-              /*********************************************/
-              case 0: {
-                // std::cout<< "motor_a_position_msg: " << motor_cmd_msg.module_a().hip().position()
-                // << std::endl;
-                mod.txdata_buffer_[0].position_ = motor_cmd_msg.module_a().hip().position();
-                mod.txdata_buffer_[0].torque_ = motor_cmd_msg.module_a().hip().torque();
-                mod.txdata_buffer_[0].KP_ = motor_cmd_msg.module_a().hip().kp();
-                mod.txdata_buffer_[0].KI_ = motor_cmd_msg.module_a().hip().ki();
-                mod.txdata_buffer_[0].KD_ = motor_cmd_msg.module_a().hip().kd();
-
-                mod.txdata_buffer_[1].position_ = motor_cmd_msg.module_d().hip().position();
-                mod.txdata_buffer_[1].torque_ = motor_cmd_msg.module_d().hip().torque();
-                mod.txdata_buffer_[1].KP_ = motor_cmd_msg.module_d().hip().kp();
-                mod.txdata_buffer_[1].KI_ = motor_cmd_msg.module_d().hip().ki();
-                mod.txdata_buffer_[1].KD_ = motor_cmd_msg.module_d().hip().kd();
+      
+      if (*NO_CAN_TIMEDOUT_ERROR_ && *NO_SWITCH_TIMEDOUT_ERROR_) {
+        /*********************************************/
+        // Motor Index Mapping:
+        //  0: module_a (LF) - Left Front Hip  - CAN0-port0
+        //  1: module_d (LH) - Left Hind Hip   - CAN0-port1
+        //  2: module_b (RF) - Right Front Hip - CAN1-port0
+        //  3: module_c (RH) - Right Hind Hip  - CAN1-port1
+        /*********************************************/
+        
+        for (int i = 0; i < 4; i++) {
+          if (hip_motor_list_->at(i).enable_) {
+            switch (i) {
+              case 0: { // module_a (LF)
+                hip_motor_list_->at(i).txdata_buffer_.position_ = motor_cmd_msg.module_a().hip().position();
+                hip_motor_list_->at(i).txdata_buffer_.torque_ = motor_cmd_msg.module_a().hip().torque();
+                hip_motor_list_->at(i).txdata_buffer_.KP_ = motor_cmd_msg.module_a().hip().kp();
+                hip_motor_list_->at(i).txdata_buffer_.KI_ = motor_cmd_msg.module_a().hip().ki();
+                hip_motor_list_->at(i).txdata_buffer_.KD_ = motor_cmd_msg.module_a().hip().kd();
               } break;
-
-              case 1: {
-                mod.txdata_buffer_[0].position_ = motor_cmd_msg.module_b().hip().position();
-                mod.txdata_buffer_[0].torque_ = motor_cmd_msg.module_b().hip().torque();
-                mod.txdata_buffer_[0].KP_ = motor_cmd_msg.module_b().hip().kp();
-                mod.txdata_buffer_[0].KI_ = motor_cmd_msg.module_b().hip().ki();
-                mod.txdata_buffer_[0].KD_ = motor_cmd_msg.module_b().hip().kd();
-
-                mod.txdata_buffer_[1].position_ = motor_cmd_msg.module_c().hip().position();
-                mod.txdata_buffer_[1].torque_ = motor_cmd_msg.module_c().hip().torque();
-                mod.txdata_buffer_[1].KP_ = motor_cmd_msg.module_c().hip().kp();
-                mod.txdata_buffer_[1].KI_ = motor_cmd_msg.module_c().hip().ki();
-                mod.txdata_buffer_[1].KD_ = motor_cmd_msg.module_c().hip().kd();
+              
+              case 1: { // module_d (LH)
+                hip_motor_list_->at(i).txdata_buffer_.position_ = motor_cmd_msg.module_d().hip().position();
+                hip_motor_list_->at(i).txdata_buffer_.torque_ = motor_cmd_msg.module_d().hip().torque();
+                hip_motor_list_->at(i).txdata_buffer_.KP_ = motor_cmd_msg.module_d().hip().kp();
+                hip_motor_list_->at(i).txdata_buffer_.KI_ = motor_cmd_msg.module_d().hip().ki();
+                hip_motor_list_->at(i).txdata_buffer_.KD_ = motor_cmd_msg.module_d().hip().kd();
+              } break;
+              
+              case 2: { // module_b (RF)
+                hip_motor_list_->at(i).txdata_buffer_.position_ = motor_cmd_msg.module_b().hip().position();
+                hip_motor_list_->at(i).txdata_buffer_.torque_ = motor_cmd_msg.module_b().hip().torque();
+                hip_motor_list_->at(i).txdata_buffer_.KP_ = motor_cmd_msg.module_b().hip().kp();
+                hip_motor_list_->at(i).txdata_buffer_.KI_ = motor_cmd_msg.module_b().hip().ki();
+                hip_motor_list_->at(i).txdata_buffer_.KD_ = motor_cmd_msg.module_b().hip().kd();
+              } break;
+              
+              case 3: { // module_c (RH)
+                hip_motor_list_->at(i).txdata_buffer_.position_ = motor_cmd_msg.module_c().hip().position();
+                hip_motor_list_->at(i).txdata_buffer_.torque_ = motor_cmd_msg.module_c().hip().torque();
+                hip_motor_list_->at(i).txdata_buffer_.KP_ = motor_cmd_msg.module_c().hip().kp();
+                hip_motor_list_->at(i).txdata_buffer_.KI_ = motor_cmd_msg.module_c().hip().ki();
+                hip_motor_list_->at(i).txdata_buffer_.KD_ = motor_cmd_msg.module_c().hip().kd();
               } break;
             }
           }
         }
-        index++;
       }
-
     } break;
 
     case Mode::CONFIG: {
@@ -230,17 +198,17 @@ void ModeFsm::runFsm(motor_msg::MotorStateStamped& motor_fb_msg,
 
 bool ModeFsm::switchMode(Mode next_mode) {
   int mode_switched_cnt = 0;
-  int module_enabled = 0;
+  int motor_enabled = 0;
   bool success = false;
   Mode next_mode_switch = next_mode;
 
-  for (int i = 0; i < 2; i++) {
-    if (hip_module_list_->at(i).enable_) module_enabled++;
+  for (int i = 0; i < 4; i++) {
+    if (hip_motor_list_->at(i).enable_) motor_enabled++;
   }
 
   double time_elapsed = 0;
   while (1) {
-    if (mode_switched_cnt == module_enabled) {
+    if (mode_switched_cnt == motor_enabled) {
       prev_workingMode_ = workingMode_;
       workingMode_ = next_mode_switch;
       success = true;
@@ -252,16 +220,19 @@ bool ModeFsm::switchMode(Mode next_mode) {
     } else
       mode_switched_cnt = 0;
 
-    for (int i = 0; i < 2; i++) {
-      if (hip_module_list_->at(i).enable_) {
-        hip_module_list_->at(i).CAN_set_mode(next_mode_switch);
-        hip_module_list_->at(i).io_.set_ni_CAN_transmit(true);
-        hip_module_list_->at(i).CAN_receive_feedback();
+    for (int i = 0; i < 4; i++) {
+      if (hip_motor_list_->at(i).enable_) {
+        // Set mode using switch_mode or directly via io
+        uint32_t fc1, fc2;
+        hip_motor_list_->at(i).io_->get_ni_CAN_id_fc(&fc1, &fc2);
+        // Assuming all motors use the same mode (simplified)
+        hip_motor_list_->at(i).io_->set_ni_CAN_id_fc((int)next_mode_switch, (int)next_mode_switch);
+        hip_motor_list_->at(i).io_->set_ni_CAN_transmit(true);
+        hip_motor_list_->at(i).CAN_receive_feedback();
         if ((next_mode_switch == Mode::SET_ZERO &&
-             (int)hip_module_list_->at(i).rxdata_buffer_[0].position_ <= 0.01 &&
-             (int)hip_module_list_->at(i).rxdata_buffer_[0].position_ >= -0.01) ||
-            ((int)hip_module_list_->at(i).rxdata_buffer_[0].mode_ == (int)next_mode_switch &&
-             (int)hip_module_list_->at(i).rxdata_buffer_[1].mode_ == (int)next_mode_switch)) {
+             (int)hip_motor_list_->at(i).rxdata_buffer_.position_ <= 0.01 &&
+             (int)hip_motor_list_->at(i).rxdata_buffer_.position_ >= -0.01) ||
+            ((int)hip_motor_list_->at(i).rxdata_buffer_.mode_ == (int)next_mode_switch)) {
           mode_switched_cnt++;
         }
       }
@@ -271,12 +242,12 @@ bool ModeFsm::switchMode(Mode next_mode) {
     usleep(1e4);
   }
 
-  for (int i = 0; i < 2; i++) {
-    if (hip_module_list_->at(i).enable_) {
+  for (int i = 0; i < 4; i++) {
+    if (hip_motor_list_->at(i).enable_) {
       if (workingMode_ == Mode::MOTOR)
-        hip_module_list_->at(i).io_.set_ni_CAN_id_fc((int)Mode::CONTROL, (int)Mode::CONTROL);
+        hip_motor_list_->at(i).io_->set_ni_CAN_id_fc((int)Mode::CONTROL, (int)Mode::CONTROL);
       else
-        hip_module_list_->at(i).io_.set_ni_CAN_id_fc((int)Mode::CONFIG, (int)Mode::CONFIG);
+        hip_motor_list_->at(i).io_->set_ni_CAN_id_fc((int)Mode::CONFIG, (int)Mode::CONFIG);
     }
   }
 
@@ -284,73 +255,81 @@ bool ModeFsm::switchMode(Mode next_mode) {
 }
 
 void ModeFsm::publishMsg(motor_msg::MotorStateStamped& motor_fb_msg) {
-  int index = 0;
-  for (auto& mod : *hip_module_list_) {
-    if (mod.enable_) {
-      switch (index) {
-        case 0:  // CAN0 (module_L)
+  if (!hip_motor_list_) return;
+  
+  for (int i = 0; i < 4; i++) {
+    if (hip_motor_list_->at(i).enable_) {
+      switch (i) {
+        case 0:  // module_a (LF)
         {
-          /* Publish feedback data from Motors_F */
           motor_fb_msg.mutable_module_a()->mutable_hip()->set_position(
-              mod.rxdata_buffer_[0].position_);
+              hip_motor_list_->at(i).rxdata_buffer_.position_);
           motor_fb_msg.mutable_module_a()->mutable_hip()->set_velocity(
-              mod.rxdata_buffer_[0].velocity_);
+              hip_motor_list_->at(i).rxdata_buffer_.velocity_);
           motor_fb_msg.mutable_module_a()->mutable_hip()->set_torque(
-              mod.rxdata_buffer_[0].torque_ * mod.txdata_buffer_[0].KT_);  // torque F
-          /* Publish feedback data from Motors_H */
-          motor_fb_msg.mutable_module_d()->mutable_hip()->set_position(
-              mod.rxdata_buffer_[1].position_);
-          motor_fb_msg.mutable_module_d()->mutable_hip()->set_velocity(
-              mod.rxdata_buffer_[1].velocity_);
-          motor_fb_msg.mutable_module_d()->mutable_hip()->set_torque(
-              mod.rxdata_buffer_[1].torque_ * mod.txdata_buffer_[1].KT_);  // torque H
+              hip_motor_list_->at(i).rxdata_buffer_.torque_ * hip_motor_list_->at(i).txdata_buffer_.KT_);
         } break;
 
-        case 1:  // CAN1 (module_R)
+        case 1:  // module_d (LH)
         {
-          /* Publish feedback data from Motors_F */
+          motor_fb_msg.mutable_module_d()->mutable_hip()->set_position(
+              hip_motor_list_->at(i).rxdata_buffer_.position_);
+          motor_fb_msg.mutable_module_d()->mutable_hip()->set_velocity(
+              hip_motor_list_->at(i).rxdata_buffer_.velocity_);
+          motor_fb_msg.mutable_module_d()->mutable_hip()->set_torque(
+              hip_motor_list_->at(i).rxdata_buffer_.torque_ * hip_motor_list_->at(i).txdata_buffer_.KT_);
+        } break;
+
+        case 2:  // module_b (RF)
+        {
           motor_fb_msg.mutable_module_b()->mutable_hip()->set_position(
-              mod.rxdata_buffer_[0].position_);
+              hip_motor_list_->at(i).rxdata_buffer_.position_);
           motor_fb_msg.mutable_module_b()->mutable_hip()->set_velocity(
-              mod.rxdata_buffer_[0].velocity_);
+              hip_motor_list_->at(i).rxdata_buffer_.velocity_);
           motor_fb_msg.mutable_module_b()->mutable_hip()->set_torque(
-              mod.rxdata_buffer_[0].torque_ * mod.txdata_buffer_[0].KT_);  // torque F
-          /* Publish feedback data from Motors_H */
+              hip_motor_list_->at(i).rxdata_buffer_.torque_ * hip_motor_list_->at(i).txdata_buffer_.KT_);
+        } break;
+
+        case 3:  // module_c (RH)
+        {
           motor_fb_msg.mutable_module_c()->mutable_hip()->set_position(
-              mod.rxdata_buffer_[1].position_);
+              hip_motor_list_->at(i).rxdata_buffer_.position_);
           motor_fb_msg.mutable_module_c()->mutable_hip()->set_velocity(
-              mod.rxdata_buffer_[1].velocity_);
+              hip_motor_list_->at(i).rxdata_buffer_.velocity_);
           motor_fb_msg.mutable_module_c()->mutable_hip()->set_torque(
-              mod.rxdata_buffer_[1].torque_ * mod.txdata_buffer_[1].KT_);  // torque H
+              hip_motor_list_->at(i).rxdata_buffer_.torque_ * hip_motor_list_->at(i).txdata_buffer_.KT_);
         } break;
       }
     } else {
-      switch (index) {
-        case 0:  // CAN0 (module_L)
+      switch (i) {
+        case 0:  // module_a (LF)
         {
-          /* Publish feedback data from Motors_F */
           motor_fb_msg.mutable_module_a()->mutable_hip()->set_position(0);
           motor_fb_msg.mutable_module_a()->mutable_hip()->set_velocity(0);
-          motor_fb_msg.mutable_module_a()->mutable_hip()->set_torque(0);  // torque F
-          /* Publish feedback data from Motors_H */
-          motor_fb_msg.mutable_module_d()->mutable_hip()->set_position(0);
-          motor_fb_msg.mutable_module_d()->mutable_hip()->set_velocity(0);
-          motor_fb_msg.mutable_module_d()->mutable_hip()->set_torque(0);  // torque H
+          motor_fb_msg.mutable_module_a()->mutable_hip()->set_torque(0);
         } break;
 
-        case 1:  // CAN0 (module_R)
+        case 1:  // module_d (LH)
         {
-          /* Publish feedback data from Motors_F */
-          motor_fb_msg.mutable_module_b()->mutable_hip()->set_velocity(0);
+          motor_fb_msg.mutable_module_d()->mutable_hip()->set_position(0);
+          motor_fb_msg.mutable_module_d()->mutable_hip()->set_velocity(0);
+          motor_fb_msg.mutable_module_d()->mutable_hip()->set_torque(0);
+        } break;
+
+        case 2:  // module_b (RF)
+        {
           motor_fb_msg.mutable_module_b()->mutable_hip()->set_position(0);
-          motor_fb_msg.mutable_module_b()->mutable_hip()->set_torque(0);  // torque F
-          /* Publish feedback data from Motors_H */
+          motor_fb_msg.mutable_module_b()->mutable_hip()->set_velocity(0);
+          motor_fb_msg.mutable_module_b()->mutable_hip()->set_torque(0);
+        } break;
+
+        case 3:  // module_c (RH)
+        {
           motor_fb_msg.mutable_module_c()->mutable_hip()->set_position(0);
           motor_fb_msg.mutable_module_c()->mutable_hip()->set_velocity(0);
-          motor_fb_msg.mutable_module_c()->mutable_hip()->set_torque(0);  // torque H
+          motor_fb_msg.mutable_module_c()->mutable_hip()->set_torque(0);
         } break;
       }
     }
-    index++;
   }
 }

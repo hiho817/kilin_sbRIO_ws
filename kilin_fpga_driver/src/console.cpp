@@ -10,11 +10,17 @@ mutex cons_mtx_;
 int refresh_flag;
 
 void Console::init(FpgaHandler* fpga, vector<HipModule>* hip_mods, vector<LimbModule>* limb_mods,
-                   std::vector<bool>* pb_state_ptr_, ModeFsm* fsm_ptr_, std::mutex* mtx_ptr_) {
+                   std::vector<bool>* pb_state_ptr_, std::mutex* mtx_ptr_) {
   fpga_ = fpga;
 
-  modL_ptr_ = &hip_mods->at(0);
-  modR_ptr_ = &hip_mods->at(1);
+  // Handle nullptr for hip_mods (when using individual HipMotor instances)
+  if (hip_mods != nullptr && hip_mods->size() >= 2) {
+    modL_ptr_ = &hip_mods->at(0);
+    modR_ptr_ = &hip_mods->at(1);
+  } else {
+    modL_ptr_ = nullptr;
+    modR_ptr_ = nullptr;
+  }
 
   limb_modules_ptr_ = limb_mods;
 
@@ -31,11 +37,52 @@ void Console::init(FpgaHandler* fpga, vector<HipModule>* hip_mods, vector<LimbMo
 
   input_panel_.main_mtx_ = mtx_ptr_;
   input_panel_.powerboard_state_ = pb_state_ptr_;
-  input_panel_.fsm_ = fsm_ptr_;
+  // input_panel_.fsm_ = fsm_ptr_;
 
   main_mtx_ = mtx_ptr_;
   powerboard_state_ = pb_state_ptr_;
-  fsm_ = fsm_ptr_;
+  // fsm_ = fsm_ptr_;
+
+  if_resetPanel = false;
+  t_frontend_ = thread(&Console::refreshWindow, this);
+  refresh_flag = 1;
+}
+
+void Console::init_hip_motors(FpgaHandler* fpga, HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh,
+                               vector<LimbModule>* limb_mods, std::vector<bool>* pb_state_ptr_, 
+                               std::mutex* mtx_ptr_) {
+  fpga_ = fpga;
+
+  // Set individual motor pointers
+  hip_motor_LF_ = lf;
+  hip_motor_LH_ = lh;
+  hip_motor_RF_ = rf;
+  hip_motor_RH_ = rh;
+  
+  // No HipModule used
+  modL_ptr_ = nullptr;
+  modR_ptr_ = nullptr;
+
+  limb_modules_ptr_ = limb_mods;
+
+  setlocale(LC_ALL, "");
+  initscr();
+  getmaxyx(stdscr, term_max_y_, term_max_x_);
+  start_color();
+  init_pair(BKGD_PAIR, COLOR_WHITE, COLOR_BLACK);
+  wbkgd(stdscr, COLOR_PAIR(BKGD_PAIR));
+  init_pair(CYAN_PAIR, COLOR_CYAN, COLOR_BLACK);
+
+  frontend_rate_ = 3;
+  input_panel_.init_hip_motors(lf, lh, rf, rh, limb_modules_ptr_, &if_resetPanel, term_max_x_, term_max_y_);
+
+  input_panel_.main_mtx_ = mtx_ptr_;
+  input_panel_.powerboard_state_ = pb_state_ptr_;
+  // input_panel_.fsm_ = fsm_ptr_;
+
+  main_mtx_ = mtx_ptr_;
+  powerboard_state_ = pb_state_ptr_;
+  // fsm_ = fsm_ptr_;
 
   if_resetPanel = false;
   t_frontend_ = thread(&Console::refreshWindow, this);
@@ -49,24 +96,38 @@ void Console::refreshWindow() {
   HipModule* lm_null = 0;
   Panel p_power_("[P] Power Board ", "power", lm_null, 1, 9, 60, 40, true);
   Panel p_cmain_("[F] FPGA Server ", "c_main", lm_null, 1, 1, 8, 40, true);
-  Panel p_modL_("[L] L_Module ", "module", modL_ptr_, 41, 1, (term_max_y_ - 2) / 2 - 1, 60, true);
-  Panel p_modR_("[R] R_Module ", "module", modR_ptr_, 41, (term_max_y_) / 2, (term_max_y_ - 2) / 2 - 1, 60, true);
+  
+  // Create panels for individual hip motors or old hip modules
+  Panel p_modL_("[H] L Hip (LF+LH)", "hip_motor", lm_null, 41, 1, (term_max_y_ - 2) / 2 - 1, 60, true);
+  Panel p_modR_("[H] R Hip (RF+RH)", "hip_motor", lm_null, 41, (term_max_y_) / 2, (term_max_y_ - 2) / 2 - 1, 60, true);
+  
   Panel p_mod_test_RS485("[T] Test Limb ", "RS485_test", lm_null, 95, 1, term_max_y_, 100, true);
-  // Panel p_modS1_("[1] Steering1 ", "module", modL_ptr_, 93, 1, (term_max_y_ - 2) / 2 - 1, 60,
-  // true);
 
   p_power_.powerboard_state_ = powerboard_state_;
-  p_cmain_.fsm_ = fsm_;
+  // p_cmain_.fsm_ = fsm_;
 
   while (1) {
     cons_mtx_.lock();
 
     p_power_.print_pwrb_info(fpga_, powerboard_state_->at(0), powerboard_state_->at(1), powerboard_state_->at(2));
-    p_cmain_.print_mode_main(Behavior::TCP_SLAVE, fsm_->workingMode_);
-    p_modL_.infoDisplay();
-    p_modR_.infoDisplay();
+    // p_cmain_.print_mode_main(Behavior::TCP_SLAVE, fsm_->workingMode_);
+    
+    // Display hip motors or old hip modules
+    // Left panel shows motors 0 (LF) and 1 (LH)
+    if (hip_motor_LF_ || hip_motor_LH_) {
+      p_modL_.print_hip_motor_info(hip_motor_LF_, hip_motor_LH_);
+    } else if (modL_ptr_ != nullptr) {
+      p_modL_.infoDisplay();
+    }
+    
+    // Right panel shows motors 2 (RF) and 3 (RH)
+    if (hip_motor_RF_ || hip_motor_RH_) {
+      p_modR_.print_hip_motor_info(hip_motor_RF_, hip_motor_RH_);
+    } else if (modR_ptr_ != nullptr) {
+      p_modR_.infoDisplay();
+    }
+    
     p_mod_test_RS485.print_limb_test(fpga_, limb_modules_ptr_);
-    // p_modS1_.infoDisplay();
     cons_mtx_.unlock();
 
     usleep(0.1 * 1000 * 1000);
@@ -76,8 +137,34 @@ void Console::refreshWindow() {
 void InputPanel::init(vector<HipModule>* hip_mods, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y) {
   win_ = newwin(3, term_max_x - 1, term_max_y - 3, 1);
 
-  modL_ptr_ = &hip_mods->at(0);
-  modR_ptr_ = &hip_mods->at(1);
+  // Handle nullptr for hip_mods (when using individual HipMotor instances)
+  if (hip_mods != nullptr && hip_mods->size() >= 2) {
+    modL_ptr_ = &hip_mods->at(0);
+    modR_ptr_ = &hip_mods->at(1);
+  } else {
+    modL_ptr_ = nullptr;
+    modR_ptr_ = nullptr;
+  }
+
+  limb_modules_ptr_ = limb_mods;
+
+  thread = new std::thread(&InputPanel::inputHandler, this, win_, std::ref(mutex_));
+}
+
+void InputPanel::init_hip_motors(HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh,
+                                  vector<LimbModule>* limb_mods, bool* if_resetPanel, 
+                                  int term_max_x, int term_max_y) {
+  win_ = newwin(3, term_max_x - 1, term_max_y - 3, 1);
+
+  // Set individual motor pointers
+  hip_motor_LF_ = lf;
+  hip_motor_LH_ = lh;
+  hip_motor_RF_ = rf;
+  hip_motor_RH_ = rh;
+  
+  // No HipModule used
+  modL_ptr_ = nullptr;
+  modR_ptr_ = nullptr;
 
   limb_modules_ptr_ = limb_mods;
 
@@ -151,8 +238,9 @@ void InputPanel::commandDecode(string buf) {
   bool lm_selected = false;
   bool f_selected = false;
   bool limb_selected = false;
+  bool hip_selected = false;
 
-  bool switchFSM_success = true;
+  // bool switchFSM_success = true;
   HipModule* md_ptr_;
 
   vector<string> bufs;
@@ -163,12 +251,22 @@ void InputPanel::commandDecode(string buf) {
       pb_selected = true;
     } else if (bufs[0] == "F") {
       f_selected = true;
+    } else if (bufs[0] == "H") {
+      hip_selected = true;
     } else if (bufs[0] == "L") {
       lm_selected = true;
       md_ptr_ = modL_ptr_;
+      if (md_ptr_ == nullptr) {
+        syntax_err = true;
+        mvwprintw(win_, 2, 1, "Hip module L not available");
+      }
     } else if (bufs[0] == "R") {
       lm_selected = true;
       md_ptr_ = modR_ptr_;
+      if (md_ptr_ == nullptr) {
+        syntax_err = true;
+        mvwprintw(win_, 2, 1, "Hip module R not available");
+      }
     } else if (bufs[0] == "T") {
       limb_selected = true;
     } else {
@@ -213,21 +311,25 @@ void InputPanel::commandDecode(string buf) {
         syntax_err = true;
       }
     } else if (f_selected) {
-      if (bufs[1] == "M") {
-        if (bufs[2] == "R") {
-          switchFSM_success = fsm_->switchMode(Mode::REST);
-        } else if (bufs[2] == "M") {
-          switchFSM_success = fsm_->switchMode(Mode::MOTOR);
-        } else if (bufs[2] == "S") {
-          switchFSM_success = fsm_->switchMode(Mode::SET_ZERO);
-        } else if (bufs[2] == "H") {
-          switchFSM_success = fsm_->switchMode(Mode::HALL_CALIBRATE);
-        } else {
-          syntax_err = true;
-        }
-      } else {
-        syntax_err = true;
-      }
+      // if (bufs[1] == "M") {
+      //   if (bufs[2] == "R") {
+      //     switchFSM_success = fsm_->switchMode(Mode::REST);
+      //   } else if (bufs[2] == "M") {
+      //     switchFSM_success = fsm_->switchMode(Mode::MOTOR);
+      //   } else if (bufs[2] == "S") {
+      //     switchFSM_success = fsm_->switchMode(Mode::SET_ZERO);
+      //   } else if (bufs[2] == "H") {
+      //     switchFSM_success = fsm_->switchMode(Mode::HALL_CALIBRATE);
+      //   } else {
+      //     syntax_err = true;
+      //   }
+      // } else {
+      //   syntax_err = true;
+      // }
+    } else if (hip_selected) {
+      // Hip motor commands - only mode switching allowed in 3-param format
+      syntax_err = true;
+      mvwprintw(win_, 2, 1, "Use 4-parameter format: H <id> <cmd> <val>");
     } else {
       syntax_err = true;
     }
@@ -237,56 +339,141 @@ void InputPanel::commandDecode(string buf) {
     mvwprintw(win_, 2, 7, bufs[3].c_str());
     wrefresh(win_);
 
-    int mtr_idx = 0;
-    if (bufs[1] == "F") {
-      mtr_idx = 0;
-    } else if (bufs[1] == "H") {
-      mtr_idx = 1;
-    } else {
-      syntax_err = true;
-    }
-
-    if (!syntax_err) {
-      if (bufs[2] == "C") {
-        try {
-          md_ptr_->motors_list_[mtr_idx].CAN_ID_ = stoi(bufs[3]);
-        } catch (exception& e) {
-          syntax_err = true;
-          mvwprintw(win_, 2, 1, "syntax error");
+    // Hip motor commands: H <motor_id> <command> <value>
+    // motor_id: 0=LF, 1=LH, 2=RF, 3=RH
+    // command: A=position, T=torque, P=KP, I=KI, D=KD, M=mode
+    if (hip_selected) {
+      try {
+        int motor_id = stoi(bufs[1]);
+        HipMotor* motor_ptr = nullptr;
+        
+        switch (motor_id) {
+          case 0: motor_ptr = hip_motor_LF_; break;
+          case 1: motor_ptr = hip_motor_LH_; break;
+          case 2: motor_ptr = hip_motor_RF_; break;
+          case 3: motor_ptr = hip_motor_RH_; break;
+          default:
+            syntax_err = true;
+            mvwprintw(win_, 2, 1, "Invalid motor ID (0-3)");
         }
-      } else if (bufs[2] == "A") {
-        try {
-          md_ptr_->txdata_buffer_[mtr_idx].position_ = stof(bufs[3]);
-        } catch (exception& e) {
+        
+        if (motor_ptr && !syntax_err) {
+          if (bufs[2] == "A") {
+            // Setting position - ensure we're in CONTROL mode if currently in MOTOR mode
+            if (motor_ptr->current_mode_ == Mode::MOTOR) {
+              // Set function code to CONTROL for position commands
+              uint32_t fc1, fc2;
+              motor_ptr->io_->get_ni_CAN_id_fc(&fc1, &fc2);
+              if (motor_ptr->motor_index_ == 0) {
+                motor_ptr->io_->set_ni_CAN_id_fc((int)Mode::CONTROL, fc2);
+              } else {
+                motor_ptr->io_->set_ni_CAN_id_fc(fc1, (int)Mode::CONTROL);
+              }
+            }
+            motor_ptr->txdata_buffer_.position_ = stof(bufs[3]);
+          } else if (bufs[2] == "T") {
+            // Setting torque - ensure we're in CONTROL mode if currently in MOTOR mode
+            if (motor_ptr->current_mode_ == Mode::MOTOR) {
+              uint32_t fc1, fc2;
+              motor_ptr->io_->get_ni_CAN_id_fc(&fc1, &fc2);
+              if (motor_ptr->motor_index_ == 0) {
+                motor_ptr->io_->set_ni_CAN_id_fc((int)Mode::CONTROL, fc2);
+              } else {
+                motor_ptr->io_->set_ni_CAN_id_fc(fc1, (int)Mode::CONTROL);
+              }
+            }
+            motor_ptr->txdata_buffer_.torque_ = stof(bufs[3]);
+          } else if (bufs[2] == "P") {
+            motor_ptr->txdata_buffer_.KP_ = stof(bufs[3]);
+          } else if (bufs[2] == "I") {
+            motor_ptr->txdata_buffer_.KI_ = stof(bufs[3]);
+          } else if (bufs[2] == "D") {
+            motor_ptr->txdata_buffer_.KD_ = stof(bufs[3]);
+          } else if (bufs[2] == "M") {
+            // Set mode: R=REST, C=CONFIG, Z=SET_ZERO, H=HALL_CAL, M=MOTOR, T=CONTROL
+            if (bufs[3] == "R") {
+              motor_ptr->switch_mode(Mode::REST);
+            } else if (bufs[3] == "C") {
+              motor_ptr->switch_mode(Mode::CONFIG);
+            } else if (bufs[3] == "Z") {
+              motor_ptr->switch_mode(Mode::SET_ZERO);
+            } else if (bufs[3] == "H") {
+              motor_ptr->switch_mode(Mode::HALL_CALIBRATE);
+            } else if (bufs[3] == "M") {
+              motor_ptr->switch_mode(Mode::MOTOR);
+            } else if (bufs[3] == "T") {
+              motor_ptr->switch_mode(Mode::CONTROL);
+            } else {
+              syntax_err = true;
+              mvwprintw(win_, 2, 1, "Invalid mode");
+            }
+          } else {
+            syntax_err = true;
+            mvwprintw(win_, 2, 1, "Invalid command");
+          }
+        } else if (!motor_ptr) {
           syntax_err = true;
+          mvwprintw(win_, 2, 1, "Motor not available");
         }
-      } else if (bufs[2] == "T") {
-        try {
-          md_ptr_->txdata_buffer_[mtr_idx].torque_ = stof(bufs[3]);
-        } catch (exception& e) {
-          syntax_err = true;
-        }
-      } else if (bufs[2] == "P") {
-        try {
-          md_ptr_->txdata_buffer_[mtr_idx].KP_ = stof(bufs[3]);
-        } catch (exception& e) {
-          syntax_err = true;
-        }
-      } else if (bufs[2] == "I") {
-        try {
-          md_ptr_->txdata_buffer_[mtr_idx].KI_ = stof(bufs[3]);
-        } catch (exception& e) {
-          syntax_err = true;
-        }
-      } else if (bufs[2] == "D") {
-        try {
-          md_ptr_->txdata_buffer_[mtr_idx].KD_ = stof(bufs[3]);
-        } catch (exception& e) {
-          syntax_err = true;
-        }
+      } catch (exception& e) {
+        syntax_err = true;
+        mvwprintw(win_, 2, 1, "Parse error");
+      }
+    } else if (lm_selected) {
+      // Old HipModule command handling
+      int mtr_idx = 0;
+      if (bufs[1] == "F") {
+        mtr_idx = 0;
+      } else if (bufs[1] == "H") {
+        mtr_idx = 1;
       } else {
         syntax_err = true;
       }
+
+      if (!syntax_err && md_ptr_) {
+        if (bufs[2] == "C") {
+          try {
+            md_ptr_->motors_list_[mtr_idx].CAN_ID_ = stoi(bufs[3]);
+          } catch (exception& e) {
+            syntax_err = true;
+            mvwprintw(win_, 2, 1, "syntax error");
+          }
+        } else if (bufs[2] == "A") {
+          try {
+            md_ptr_->txdata_buffer_[mtr_idx].position_ = stof(bufs[3]);
+          } catch (exception& e) {
+            syntax_err = true;
+          }
+        } else if (bufs[2] == "T") {
+          try {
+            md_ptr_->txdata_buffer_[mtr_idx].torque_ = stof(bufs[3]);
+          } catch (exception& e) {
+            syntax_err = true;
+          }
+        } else if (bufs[2] == "P") {
+          try {
+            md_ptr_->txdata_buffer_[mtr_idx].KP_ = stof(bufs[3]);
+          } catch (exception& e) {
+            syntax_err = true;
+          }
+        } else if (bufs[2] == "I") {
+          try {
+            md_ptr_->txdata_buffer_[mtr_idx].KI_ = stof(bufs[3]);
+          } catch (exception& e) {
+            syntax_err = true;
+          }
+        } else if (bufs[2] == "D") {
+          try {
+            md_ptr_->txdata_buffer_[mtr_idx].KD_ = stof(bufs[3]);
+          } catch (exception& e) {
+            syntax_err = true;
+          }
+        } else {
+          syntax_err = true;
+        }
+      }
+    } else {
+      syntax_err = true;
     }
   } else if (bufs.size() == 5) {
     // Format: T <module_id> <motor> <command> <value>
@@ -376,8 +563,6 @@ void InputPanel::commandDecode(string buf) {
 
   if (syntax_err) {
     mvwprintw(win_, 0, 1, "Syntax Error !");
-  } else if (!switchFSM_success) {
-    mvwprintw(win_, 0, 1, "Switch Mode Timeout !");
   } else {
     mvwprintw(win_, 0, 1, "Command Send !");
   }
@@ -440,38 +625,156 @@ void Panel::infoDisplay()  // type = module
   // Motor_F
   mvwprintw(win_, 1, 1, "[F] Motor_F---------------------------------------");
   mvwprintw(win_, 2, 1, "[C] [CAN] ID: %9d", md_ptr_->motors_list_[0].CAN_ID_);
-  mvwprintw(win_, 3, 1, "    [tx] TIMEDOUT: %4d", md_ptr_->CAN_tx_timedout_[0]);
-  mvwprintw(win_, y_org + 2, 1, "[A] [tx] Pos:  %5.5f", md_ptr_->txdata_buffer_[0].position_);
-  mvwprintw(win_, y_org + 3, 1, "[T] [tx] Trq:  %5.5f", md_ptr_->txdata_buffer_[0].torque_);
-  mvwprintw(win_, y_org + 4, 1, "[P] [tx] KP:   %4.5f", md_ptr_->txdata_buffer_[0].KP_);
-  mvwprintw(win_, y_org + 5, 1, "[I] [tx] KI:   %5.5f", md_ptr_->txdata_buffer_[0].KI_);
-  mvwprintw(win_, y_org + 6, 1, "[D] [tx] KD:   %5.5f", md_ptr_->txdata_buffer_[0].KD_);
+  mvwprintw(win_, 3, 1, "    (tx) TIMEDOUT: %4d", md_ptr_->CAN_tx_timedout_[0]);
+  mvwprintw(win_, y_org + 2, 1, "[A] (tx) Pos:  %5.5f", md_ptr_->txdata_buffer_[0].position_);
+  mvwprintw(win_, y_org + 3, 1, "[T] (tx) Trq:  %5.5f", md_ptr_->txdata_buffer_[0].torque_);
+  mvwprintw(win_, y_org + 4, 1, "[P] (tx) KP:   %4.5f", md_ptr_->txdata_buffer_[0].KP_);
+  mvwprintw(win_, y_org + 5, 1, "[I] (tx) KI:   %5.5f", md_ptr_->txdata_buffer_[0].KI_);
+  mvwprintw(win_, y_org + 6, 1, "[D] (tx) KD:   %5.5f", md_ptr_->txdata_buffer_[0].KD_);
   // reply
-  mvwprintw(win_, 3, 30, "[rx] TIMEDOUT: %4d", md_ptr_->CAN_rx_timedout_[0]);
-  mvwprintw(win_, y_org + 2, 30, "[rx] Ver:   %7d", md_ptr_->rxdata_buffer_[0].version_);
-  mvwprintw(win_, y_org + 3, 30, "[rx] Mode:  %7d", md_ptr_->rxdata_buffer_[0].mode_state_);
-  mvwprintw(win_, y_org + 4, 30, "[rx] Pos:   %4.5f", md_ptr_->rxdata_buffer_[0].position_);
-  mvwprintw(win_, y_org + 5, 30, "[rx] Vel:   %4.5f", md_ptr_->rxdata_buffer_[0].velocity_);
-  mvwprintw(win_, y_org + 6, 30, "[rx] Trq:   %4.5f", md_ptr_->rxdata_buffer_[0].torque_);
-  mvwprintw(win_, y_org + 7, 30, "[rx] Cal:   %7d", md_ptr_->rxdata_buffer_[0].calibrate_finish_);
+  mvwprintw(win_, 3, 30, "(rx) TIMEDOUT: %4d", md_ptr_->CAN_rx_timedout_[0]);
+  mvwprintw(win_, y_org + 2, 30, "(rx) Ver:   %7d", md_ptr_->rxdata_buffer_[0].version_);
+  mvwprintw(win_, y_org + 3, 30, "(rx) Mode:  %7d", md_ptr_->rxdata_buffer_[0].mode_state_);
+  mvwprintw(win_, y_org + 4, 30, "(rx) Pos:   %4.5f", md_ptr_->rxdata_buffer_[0].position_);
+  mvwprintw(win_, y_org + 5, 30, "(rx) Vel:   %4.5f", md_ptr_->rxdata_buffer_[0].velocity_);
+  mvwprintw(win_, y_org + 6, 30, "(rx) Trq:   %4.5f", md_ptr_->rxdata_buffer_[0].torque_);
 
   // Motor_H
   mvwprintw(win_, 10, 1, "[H] Motor_H---------------------------------------");
   mvwprintw(win_, 11, 1, "[C] [CAN] ID: %9d", md_ptr_->motors_list_[1].CAN_ID_);
-  mvwprintw(win_, 12, 1, "    [tx] TIMEDOUT: %4d", md_ptr_->CAN_tx_timedout_[1]);
-  mvwprintw(win_, y_org + 11, 1, "[A] [tx] Pos:  %5.5f", md_ptr_->txdata_buffer_[1].position_);
-  mvwprintw(win_, y_org + 12, 1, "[T] [tx] Trq:  %5.5f", md_ptr_->txdata_buffer_[1].torque_);
-  mvwprintw(win_, y_org + 13, 1, "[P] [tx] KP:   %4.5f", md_ptr_->txdata_buffer_[1].KP_);
-  mvwprintw(win_, y_org + 14, 1, "[I] [tx] KI:   %5.5f", md_ptr_->txdata_buffer_[1].KI_);
-  mvwprintw(win_, y_org + 15, 1, "[D] [tx] KD:   %5.5f", md_ptr_->txdata_buffer_[1].KD_);
+  mvwprintw(win_, 12, 1, "    (tx) TIMEDOUT: %4d", md_ptr_->CAN_tx_timedout_[1]);
+  mvwprintw(win_, y_org + 11, 1, "[A] (tx) Pos:  %5.5f", md_ptr_->txdata_buffer_[1].position_);
+  mvwprintw(win_, y_org + 12, 1, "[T] (tx) Trq:  %5.5f", md_ptr_->txdata_buffer_[1].torque_);
+  mvwprintw(win_, y_org + 13, 1, "[P] (tx) KP:   %4.5f", md_ptr_->txdata_buffer_[1].KP_);
+  mvwprintw(win_, y_org + 14, 1, "[I] (tx) KI:   %5.5f", md_ptr_->txdata_buffer_[1].KI_);
+  mvwprintw(win_, y_org + 15, 1, "[D] (tx) KD:   %5.5f", md_ptr_->txdata_buffer_[1].KD_);
   // reply
-  mvwprintw(win_, 12, 30, "[rx] TIMEDOUT: %4d", md_ptr_->CAN_rx_timedout_[1]);
-  mvwprintw(win_, y_org + 11, 30, "[rx] Ver:   %7d", md_ptr_->rxdata_buffer_[1].version_);
-  mvwprintw(win_, y_org + 12, 30, "[rx] Mode:  %7d", md_ptr_->rxdata_buffer_[1].mode_state_);
-  mvwprintw(win_, y_org + 13, 30, "[rx] Pos:   %4.5f", md_ptr_->rxdata_buffer_[1].position_);
-  mvwprintw(win_, y_org + 14, 30, "[rx] Vel:   %4.5f", md_ptr_->rxdata_buffer_[1].velocity_);
-  mvwprintw(win_, y_org + 15, 30, "[rx] Trq:   %4.5f", md_ptr_->rxdata_buffer_[1].torque_);
-  mvwprintw(win_, y_org + 16, 30, "[rx] Cal:   %7d", md_ptr_->rxdata_buffer_[1].calibrate_finish_);
+  mvwprintw(win_, 12, 30, "(rx) TIMEDOUT: %4d", md_ptr_->CAN_rx_timedout_[1]);
+  mvwprintw(win_, y_org + 11, 30, "(rx) Ver:   %7d", md_ptr_->rxdata_buffer_[1].version_);
+  mvwprintw(win_, y_org + 12, 30, "(rx) Mode:  %7d", md_ptr_->rxdata_buffer_[1].mode_state_);
+  mvwprintw(win_, y_org + 13, 30, "(rx) Pos:   %4.5f", md_ptr_->rxdata_buffer_[1].position_);
+  mvwprintw(win_, y_org + 14, 30, "(rx) Vel:   %4.5f", md_ptr_->rxdata_buffer_[1].velocity_);
+  mvwprintw(win_, y_org + 15, 30, "(rx) Trq:   %4.5f", md_ptr_->rxdata_buffer_[1].torque_);
+  wrefresh(win_);
+}
+
+void Panel::print_hip_motor_info(HipMotor* motor1, HipMotor* motor2) {
+  int y_org = 2;
+
+  // Display first motor (upper half)
+  if (motor1) {
+    // Motor header with ID
+    mvwprintw(win_, 1, 1, "[%d] %s---------------------------------------", 
+              motor1->motor_index_ == 0 ? (motor1->CAN_port_ == "MOD1CAN0" ? 0 : 2) : (motor1->CAN_port_ == "MOD1CAN0" ? 1 : 3),
+              motor1->label_.c_str());
+    mvwprintw(win_, 2, 1, "[C] [CAN] ID: %9d", motor1->motor_info_.CAN_ID_);
+    
+    // Display current mode
+    const char* mode1_str = "UNKNOWN";
+    switch (motor1->current_mode_) {
+      case Mode::REST: mode1_str = "REST   "; break;
+      case Mode::CONFIG: mode1_str = "CONFIG "; break;
+      case Mode::SET_ZERO: mode1_str = "SET_ZERO"; break;
+      case Mode::HALL_CALIBRATE: mode1_str = "HALL_CAL"; break;
+      case Mode::MOTOR: mode1_str = "MOTOR    "; break;
+      case Mode::CONTROL: mode1_str = "CONTROL "; break;
+    }
+    mvwprintw(win_, 3, 1, "[M] Mode: %s", mode1_str);
+    
+    // Get function codes and raw data for debugging
+    uint32_t fc1, fc2;
+    motor1->io_->get_ni_CAN_id_fc(&fc1, &fc2);
+    uint8_t tx_data1[8], tx_data2[8];
+    uint8_t rx_data1[8], rx_data2[8];
+    motor1->io_->get_ni_tx_data(tx_data1, tx_data2);
+    motor1->io_->get_ni_rx_data(rx_data1, rx_data2);
+    
+    // Display FC and raw TX/RX data
+    uint32_t fc = (motor1->motor_index_ == 0) ? fc1 : fc2;
+    uint8_t* tx_data = (motor1->motor_index_ == 0) ? tx_data1 : tx_data2;
+    uint8_t* rx_data = (motor1->motor_index_ == 0) ? rx_data1 : rx_data2;
+    
+    mvwprintw(win_, y_org + 2, 1, "FC: %d | TX: %02X %02X %02X %02X %02X %02X %02X %02X", 
+              fc, tx_data[0], tx_data[1], tx_data[2], tx_data[3],
+              tx_data[4], tx_data[5], tx_data[6], tx_data[7]);
+    mvwprintw(win_, y_org + 3, 1, "        RX: %02X %02X %02X %02X %02X %02X %02X %02X", 
+              rx_data[0], rx_data[1], rx_data[2], rx_data[3],
+              rx_data[4], rx_data[5], rx_data[6], rx_data[7]);
+    
+    mvwprintw(win_, y_org + 4, 1, "[A] (tx) Pos:  %5.5f", motor1->txdata_buffer_.position_);
+    mvwprintw(win_, y_org + 5, 1, "[T] (tx) Trq:  %5.5f", motor1->txdata_buffer_.torque_);
+    mvwprintw(win_, y_org + 6, 1, "[P] (tx) KP:   %4.5f", motor1->txdata_buffer_.KP_);
+    mvwprintw(win_, y_org + 7, 1, "[I] (tx) KI:   %5.5f", motor1->txdata_buffer_.KI_);
+    mvwprintw(win_, y_org + 8, 1, "[D] (tx) KD:   %5.5f", motor1->txdata_buffer_.KD_);
+    // reply
+    mvwprintw(win_, 3, 30, "(rx) TIMEDOUT: %4d", motor1->CAN_rx_timedout_);
+    mvwprintw(win_, y_org + 4, 30, "(rx) Ver:   %7d", motor1->rxdata_buffer_.version_);
+    mvwprintw(win_, y_org + 5, 30, "(rx) FSM:   %7d", motor1->rxdata_buffer_.mode_state_);
+    mvwprintw(win_, y_org + 6, 30, "(rx) Pos:   %4.5f", motor1->rxdata_buffer_.position_);
+    mvwprintw(win_, y_org + 7, 30, "(rx) Vel:   %4.5f", motor1->rxdata_buffer_.velocity_);
+    mvwprintw(win_, y_org + 8, 30, "(rx) Trq:   %4.5f", motor1->rxdata_buffer_.torque_);
+    mvwprintw(win_, y_org + 9, 30, "(rx) Cal:   %7d", motor1->rxdata_buffer_.cal_stat_);
+  } else {
+    mvwprintw(win_, 1, 1, "Motor 1 not available");
+  }
+
+  // Display second motor (lower half)
+  if (motor2) {
+    // Motor header with ID
+    mvwprintw(win_, 10, 1, "[%d] %s---------------------------------------", 
+              motor2->motor_index_ == 0 ? (motor2->CAN_port_ == "MOD1CAN0" ? 0 : 2) : (motor2->CAN_port_ == "MOD1CAN0" ? 1 : 3),
+              motor2->label_.c_str());
+    mvwprintw(win_, 11, 1, "[C] [CAN] ID: %9d", motor2->motor_info_.CAN_ID_);
+    
+    // Display current mode
+    const char* mode2_str = "UNKNOWN";
+    switch (motor2->current_mode_) {
+      case Mode::REST: mode2_str = "REST   "; break;
+      case Mode::CONFIG: mode2_str = "CONFIG "; break;
+      case Mode::SET_ZERO: mode2_str = "SET_ZERO"; break;
+      case Mode::HALL_CALIBRATE: mode2_str = "HALL_CAL"; break;
+      case Mode::MOTOR: mode2_str = "MOTOR    "; break;
+      case Mode::CONTROL: mode2_str = "CONTROL "; break;
+    }
+    mvwprintw(win_, 12, 1, "[M] Mode: %s", mode2_str);
+    
+    // Get function codes and raw data for debugging
+    uint32_t fc1, fc2;
+    motor2->io_->get_ni_CAN_id_fc(&fc1, &fc2);
+    uint8_t tx_data1[8], tx_data2[8];
+    uint8_t rx_data1[8], rx_data2[8];
+    motor2->io_->get_ni_tx_data(tx_data1, tx_data2);
+    motor2->io_->get_ni_rx_data(rx_data1, rx_data2);
+    
+    // Display FC and raw TX/RX data
+    uint32_t fc = (motor2->motor_index_ == 0) ? fc1 : fc2;
+    uint8_t* tx_data = (motor2->motor_index_ == 0) ? tx_data1 : tx_data2;
+    uint8_t* rx_data = (motor2->motor_index_ == 0) ? rx_data1 : rx_data2;
+    
+    mvwprintw(win_, y_org + 11, 1, "FC: %d | TX: %02X %02X %02X %02X %02X %02X %02X %02X", 
+              fc, tx_data[0], tx_data[1], tx_data[2], tx_data[3],
+              tx_data[4], tx_data[5], tx_data[6], tx_data[7]);
+    mvwprintw(win_, y_org + 12, 1, "        RX: %02X %02X %02X %02X %02X %02X %02X %02X", 
+              rx_data[0], rx_data[1], rx_data[2], rx_data[3],
+              rx_data[4], rx_data[5], rx_data[6], rx_data[7]);
+    
+    mvwprintw(win_, y_org + 13, 1, "[A] (tx) Pos:  %5.5f", motor2->txdata_buffer_.position_);
+    mvwprintw(win_, y_org + 14, 1, "[T] (tx) Trq:  %5.5f", motor2->txdata_buffer_.torque_);
+    mvwprintw(win_, y_org + 15, 1, "[P] (tx) KP:   %4.5f", motor2->txdata_buffer_.KP_);
+    mvwprintw(win_, y_org + 16, 1, "[I] (tx) KI:   %5.5f", motor2->txdata_buffer_.KI_);
+    mvwprintw(win_, y_org + 17, 1, "[D] (tx) KD:   %5.5f", motor2->txdata_buffer_.KD_);
+    // reply
+    mvwprintw(win_, 12, 30, "(rx) TIMEDOUT: %4d", motor2->CAN_rx_timedout_);
+    mvwprintw(win_, y_org + 13, 30, "(rx) Ver:   %7d", motor2->rxdata_buffer_.version_);
+    mvwprintw(win_, y_org + 14, 30, "(rx) FSM:   %7d", motor2->rxdata_buffer_.mode_state_);
+    mvwprintw(win_, y_org + 15, 30, "(rx) Pos:   %4.5f", motor2->rxdata_buffer_.position_);
+    mvwprintw(win_, y_org + 16, 30, "(rx) Vel:   %4.5f", motor2->rxdata_buffer_.velocity_);
+    mvwprintw(win_, y_org + 17, 30, "(rx) Trq:   %4.5f", motor2->rxdata_buffer_.torque_);
+    mvwprintw(win_, y_org + 18, 30, "(rx) Cal:   %7d", motor2->rxdata_buffer_.cal_stat_);
+  } else {
+    mvwprintw(win_, 10, 1, "Motor 2 not available");
+  }
+  
   wrefresh(win_);
 }
 
@@ -558,31 +861,31 @@ void Panel::print_pwrb_info(FpgaHandler* fpga, bool digital_switch, bool signal_
 }
 
 // type = c_main
-void Panel::print_mode_main(Behavior bhv, Mode fsm_mode) {
-  if (bhv == Behavior::TCP_SLAVE)
-    mvwprintw(win_, 2, 1, "Behavior: TCP_SLAVE");
-  else if (bhv == Behavior::SET_THETA)
-    mvwprintw(win_, 2, 1, "Behavior: SET_THETA");
-  else if (bhv == Behavior::CUSTOM_1)
-    mvwprintw(win_, 2, 1, "Behavior: CUSTOM_1");
-  else if (bhv == Behavior::CUSTOM_1)
-    mvwprintw(win_, 2, 1, "Behavior: CUSTOM_2");
-  else if (bhv == Behavior::CUSTOM_1)
-    mvwprintw(win_, 2, 1, "Behavior: CUSTOM_3");
+// void Panel::print_mode_main(Behavior bhv, Mode fsm_mode) {
+//   if (bhv == Behavior::TCP_SLAVE)
+//     mvwprintw(win_, 2, 1, "Behavior: TCP_SLAVE");
+//   else if (bhv == Behavior::SET_THETA)
+//     mvwprintw(win_, 2, 1, "Behavior: SET_THETA");
+//   else if (bhv == Behavior::CUSTOM_1)
+//     mvwprintw(win_, 2, 1, "Behavior: CUSTOM_1");
+//   else if (bhv == Behavior::CUSTOM_1)
+//     mvwprintw(win_, 2, 1, "Behavior: CUSTOM_2");
+//   else if (bhv == Behavior::CUSTOM_1)
+//     mvwprintw(win_, 2, 1, "Behavior: CUSTOM_3");
 
-  if (fsm_mode == Mode::REST)
-    mvwprintw(win_, 3, 1, "[M] FSM Mode:           REST");
-  else if (fsm_mode == Mode::SET_ZERO)
-    mvwprintw(win_, 3, 1, "[M] FSM Mode:       SET_ZERO");
-  else if (fsm_mode == Mode::HALL_CALIBRATE)
-    mvwprintw(win_, 3, 1, "[M] FSM Mode: HALL_CALIBRATE");
-  else if (fsm_mode == Mode::MOTOR)
-    mvwprintw(win_, 3, 1, "[M] FSM Mode:          MOTOR");
-  mvwprintw(win_, 5, 1, "[R] REST  [S] SET_ZERO ");
-  mvwprintw(win_, 6, 1, "[M] MOTOR [H] HALL_CALIBRATE");
+//   if (fsm_mode == Mode::REST)
+//     mvwprintw(win_, 3, 1, "[M] FSM Mode:           REST");
+//   else if (fsm_mode == Mode::SET_ZERO)
+//     mvwprintw(win_, 3, 1, "[M] FSM Mode:       SET_ZERO");
+//   else if (fsm_mode == Mode::HALL_CALIBRATE)
+//     mvwprintw(win_, 3, 1, "[M] FSM Mode: HALL_CALIBRATE");
+//   else if (fsm_mode == Mode::MOTOR)
+//     mvwprintw(win_, 3, 1, "[M] FSM Mode:          MOTOR");
+//   mvwprintw(win_, 5, 1, "[R] REST  [S] SET_ZERO ");
+//   mvwprintw(win_, 6, 1, "[M] MOTOR [H] HALL_CALIBRATE");
 
-  wrefresh(win_);
-}
+//   wrefresh(win_);
+// }
 
 void Panel::print_title() {
   string tag_(title_.c_str(), title_.c_str() + 3);

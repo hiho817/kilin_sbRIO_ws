@@ -66,6 +66,14 @@ void ModuleIO_CAN::set_ni_CAN_id(uint32_t id1, uint32_t id2) {
   set_fpga_status(NiFpga_WriteU32(fpga_session_, r_CAN_id2_, id2));
 }
 
+void ModuleIO_CAN::set_ni_CAN_id1(uint32_t id1) {
+  set_fpga_status(NiFpga_WriteU32(fpga_session_, r_CAN_id1_, id1));
+}
+
+void ModuleIO_CAN::set_ni_CAN_id2(uint32_t id2) {
+  set_fpga_status(NiFpga_WriteU32(fpga_session_, r_CAN_id2_, id2));
+}
+
 void ModuleIO_CAN::set_ni_CAN_id_fc(uint32_t id1_fc, uint32_t id2_fc) {
   set_fpga_status(NiFpga_WriteU32(fpga_session_, r_CAN_id1_FC_, id1_fc));
   set_fpga_status(NiFpga_WriteU32(fpga_session_, r_CAN_id2_FC_, id2_fc));
@@ -85,6 +93,16 @@ void ModuleIO_CAN::set_ni_tx_data(const uint8_t* tx_arr1, const uint8_t* tx_arr2
   set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_buf_id2_, tx_arr2, r_tx_buf_size_));
 }
 
+void ModuleIO_CAN::set_ni_tx_data_motor1(const uint8_t* tx_arr) {
+  // Write directly to FPGA register for motor 1
+  set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_buf_id1_, tx_arr, r_tx_buf_size_));
+}
+
+void ModuleIO_CAN::set_ni_tx_data_motor2(const uint8_t* tx_arr) {
+  // Write directly to FPGA register for motor 2
+  set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_buf_id2_, tx_arr, r_tx_buf_size_));
+}
+
 void ModuleIO_CAN::set_ni_CAN_transmit(NiFpga_Bool value) {
   set_fpga_status(NiFpga_WriteBool(fpga_session_, r_CAN_transmit_, value));
 }
@@ -96,6 +114,11 @@ void ModuleIO_CAN::set_ni_timeout_us(uint32_t value) {
 void ModuleIO_CAN::get_ni_rx_data(uint8_t* rx_arr1, uint8_t* rx_arr2) {
   set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_rx_buf_id1_, rx_arr1, r_rx_buf_size_));
   set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_rx_buf_id2_, rx_arr2, r_rx_buf_size_));
+}
+
+void ModuleIO_CAN::get_ni_tx_data(uint8_t* tx_arr1, uint8_t* tx_arr2) {
+  set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_tx_buf_id1_, tx_arr1, r_tx_buf_size_));
+  set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_tx_buf_id2_, tx_arr2, r_tx_buf_size_));
 }
 
 NiFpga_Bool ModuleIO_CAN::get_ni_CAN_complete() {
