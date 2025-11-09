@@ -720,11 +720,13 @@ void Panel::print_hip_motor_info(HipMotor* motor1, HipMotor* motor2) {
 
   // Display second motor (lower half)
   if (motor2) {
+    int y_motor2_start = 12;  // Start second motor lower to avoid overlap
+    
     // Motor header with ID
-    mvwprintw(win_, 10, 1, "[%d] %s---------------------------------------", 
+    mvwprintw(win_, y_motor2_start, 1, "[%d] %s---------------------------------------", 
               motor2->motor_index_ == 0 ? (motor2->CAN_port_ == "MOD1CAN0" ? 0 : 2) : (motor2->CAN_port_ == "MOD1CAN0" ? 1 : 3),
               motor2->label_.c_str());
-    mvwprintw(win_, 11, 1, "[C] [CAN] ID: %9d", motor2->motor_info_.CAN_ID_);
+    mvwprintw(win_, y_motor2_start + 1, 1, "[C] [CAN] ID: %9d", motor2->motor_info_.CAN_ID_);
     
     // Display current mode
     const char* mode2_str = "UNKNOWN";
@@ -736,7 +738,7 @@ void Panel::print_hip_motor_info(HipMotor* motor1, HipMotor* motor2) {
       case Mode::MOTOR: mode2_str = "MOTOR    "; break;
       case Mode::CONTROL: mode2_str = "CONTROL "; break;
     }
-    mvwprintw(win_, 12, 1, "[M] Mode: %s", mode2_str);
+    mvwprintw(win_, y_motor2_start + 2, 1, "[M] Mode: %s", mode2_str);
     
     // Get function codes and raw data for debugging
     uint32_t fc1, fc2;
@@ -751,28 +753,28 @@ void Panel::print_hip_motor_info(HipMotor* motor1, HipMotor* motor2) {
     uint8_t* tx_data = (motor2->motor_index_ == 0) ? tx_data1 : tx_data2;
     uint8_t* rx_data = (motor2->motor_index_ == 0) ? rx_data1 : rx_data2;
     
-    mvwprintw(win_, y_org + 11, 1, "FC: %d | TX: %02X %02X %02X %02X %02X %02X %02X %02X", 
+    mvwprintw(win_, y_motor2_start + y_org + 2, 1, "FC: %d | TX: %02X %02X %02X %02X %02X %02X %02X %02X", 
               fc, tx_data[0], tx_data[1], tx_data[2], tx_data[3],
               tx_data[4], tx_data[5], tx_data[6], tx_data[7]);
-    mvwprintw(win_, y_org + 12, 1, "        RX: %02X %02X %02X %02X %02X %02X %02X %02X", 
+    mvwprintw(win_, y_motor2_start + y_org + 3, 1, "        RX: %02X %02X %02X %02X %02X %02X %02X %02X", 
               rx_data[0], rx_data[1], rx_data[2], rx_data[3],
               rx_data[4], rx_data[5], rx_data[6], rx_data[7]);
     
-    mvwprintw(win_, y_org + 13, 1, "[A] (tx) Pos:  %5.5f", motor2->txdata_buffer_.position_);
-    mvwprintw(win_, y_org + 14, 1, "[T] (tx) Trq:  %5.5f", motor2->txdata_buffer_.torque_);
-    mvwprintw(win_, y_org + 15, 1, "[P] (tx) KP:   %4.5f", motor2->txdata_buffer_.KP_);
-    mvwprintw(win_, y_org + 16, 1, "[I] (tx) KI:   %5.5f", motor2->txdata_buffer_.KI_);
-    mvwprintw(win_, y_org + 17, 1, "[D] (tx) KD:   %5.5f", motor2->txdata_buffer_.KD_);
+    mvwprintw(win_, y_motor2_start + y_org + 4, 1, "[A] (tx) Pos:  %5.5f", motor2->txdata_buffer_.position_);
+    mvwprintw(win_, y_motor2_start + y_org + 5, 1, "[T] (tx) Trq:  %5.5f", motor2->txdata_buffer_.torque_);
+    mvwprintw(win_, y_motor2_start + y_org + 6, 1, "[P] (tx) KP:   %4.5f", motor2->txdata_buffer_.KP_);
+    mvwprintw(win_, y_motor2_start + y_org + 7, 1, "[I] (tx) KI:   %5.5f", motor2->txdata_buffer_.KI_);
+    mvwprintw(win_, y_motor2_start + y_org + 8, 1, "[D] (tx) KD:   %5.5f", motor2->txdata_buffer_.KD_);
     // reply
-    mvwprintw(win_, 12, 30, "(rx) TIMEDOUT: %4d", motor2->CAN_rx_timedout_);
-    mvwprintw(win_, y_org + 13, 30, "(rx) Ver:   %7d", motor2->rxdata_buffer_.version_);
-    mvwprintw(win_, y_org + 14, 30, "(rx) FSM:   %7d", motor2->rxdata_buffer_.mode_state_);
-    mvwprintw(win_, y_org + 15, 30, "(rx) Pos:   %4.5f", motor2->rxdata_buffer_.position_);
-    mvwprintw(win_, y_org + 16, 30, "(rx) Vel:   %4.5f", motor2->rxdata_buffer_.velocity_);
-    mvwprintw(win_, y_org + 17, 30, "(rx) Trq:   %4.5f", motor2->rxdata_buffer_.torque_);
-    mvwprintw(win_, y_org + 18, 30, "(rx) Cal:   %7d", motor2->rxdata_buffer_.cal_stat_);
+    mvwprintw(win_, y_motor2_start + 2, 30, "(rx) TIMEDOUT: %4d", motor2->CAN_rx_timedout_);
+    mvwprintw(win_, y_motor2_start + y_org + 4, 30, "(rx) Ver:   %7d", motor2->rxdata_buffer_.version_);
+    mvwprintw(win_, y_motor2_start + y_org + 5, 30, "(rx) FSM:   %7d", motor2->rxdata_buffer_.mode_state_);
+    mvwprintw(win_, y_motor2_start + y_org + 6, 30, "(rx) Pos:   %4.5f", motor2->rxdata_buffer_.position_);
+    mvwprintw(win_, y_motor2_start + y_org + 7, 30, "(rx) Vel:   %4.5f", motor2->rxdata_buffer_.velocity_);
+    mvwprintw(win_, y_motor2_start + y_org + 8, 30, "(rx) Trq:   %4.5f", motor2->rxdata_buffer_.torque_);
+    mvwprintw(win_, y_motor2_start + y_org + 9, 30, "(rx) Cal:   %7d", motor2->rxdata_buffer_.cal_stat_);
   } else {
-    mvwprintw(win_, 10, 1, "Motor 2 not available");
+    mvwprintw(win_, 12, 1, "Motor 2 not available");
   }
   
   wrefresh(win_);
