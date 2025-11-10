@@ -55,6 +55,12 @@ Kilin::Kilin() {
   hip_motor_RF_ = nullptr;
   hip_motor_RH_ = nullptr;
 
+  // Initialize pending mode changes
+  pending_mode_LF_.pending = false;
+  pending_mode_LH_.pending = false;
+  pending_mode_RF_.pending = false;
+  pending_mode_RH_.pending = false;
+
   powerboard_state_.push_back(digital_switch_);
   powerboard_state_.push_back(signal_switch_);
   powerboard_state_.push_back(power_switch_);
@@ -194,9 +200,16 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
   power_msg::PowerStateStamped power_fb_msg;
   motor_msg::MotorStateStamped motor_fb_msg;
 
+  // Process motor commands if new message received
+  if (motor_message_updated == 1) {
+    motorCommandUnpack(motor_cmd_data);
+  }
   motor_message_updated = 0;
 
   mutex_.unlock();
+
+  // Apply any pending mode changes (outside mutex - can block)
+  applyPendingModeChanges();
 
   // Pack motor and power state messages
   powerboardPack(power_fb_msg);
@@ -515,6 +528,239 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
 
   mutex_.unlock();
 }
+
+// Convert proto motor mode to internal Mode enum (for HipMotor)
+Mode protoToMode(motor_msg::MOTORMODE proto_mode) {
+  switch(proto_mode) {
+    case motor_msg::MOTORMODE::REST_MODE: return Mode::REST;
+    case motor_msg::MOTORMODE::CONFIG_MODE: return Mode::CONFIG;
+    case motor_msg::MOTORMODE::SET_ZERO: return Mode::SET_ZERO;
+    case motor_msg::MOTORMODE::HALL_CALIBRATE: return Mode::HALL_CALIBRATE;
+    case motor_msg::MOTORMODE::POSITION_MODE: return Mode::MOTOR;
+    case motor_msg::MOTORMODE::VELOCITY_MODE: return Mode::MOTOR;
+    case motor_msg::MOTORMODE::TORQUE_MODE: return Mode::MOTOR;
+    default: return Mode::REST;
+  }
+}
+
+// Convert proto motor mode to limb module mode
+MotorMode protoToLimbMode(motor_msg::MOTORMODE proto_mode) {
+  switch(proto_mode) {
+    case motor_msg::MOTORMODE::REST_MODE: return MotorMode::REST;
+    case motor_msg::MOTORMODE::CONFIG_MODE: return MotorMode::CONFIG;
+    case motor_msg::MOTORMODE::SET_ZERO: return MotorMode::SET_ZERO;
+    case motor_msg::MOTORMODE::HALL_CALIBRATE: return MotorMode::HALL_CALIBRATE;
+    case motor_msg::MOTORMODE::POSITION_MODE: return MotorMode::POSITION;
+    case motor_msg::MOTORMODE::VELOCITY_MODE: return MotorMode::VELOCITY;
+    case motor_msg::MOTORMODE::TORQUE_MODE: return MotorMode::TORQUE;
+    default: return MotorMode::REST;
+  }
+}
+
+void Kilin::motorCommandUnpack(const motor_msg::MotorCmdStamped& motor_cmd_msg) {
+  // Note: This function is called with mutex already locked by mainLoop_
+  // We mark pending mode changes here, and they will be applied outside the mutex
+
+  // Module A: LF (Left Front) - index 0
+  if (motor_cmd_msg.has_module_a()) {
+    const auto& leg_a = motor_cmd_msg.module_a();
+    
+    // Hip motor (LF)
+    if (hip_motor_LF_ && leg_a.has_hip()) {
+      const auto& hip_cmd = leg_a.hip();
+      
+      // Update command buffers
+      hip_motor_LF_->txdata_buffer_.position_ = hip_cmd.position();
+      hip_motor_LF_->txdata_buffer_.torque_ = hip_cmd.torque();
+      hip_motor_LF_->txdata_buffer_.KP_ = hip_cmd.kp();
+      hip_motor_LF_->txdata_buffer_.KI_ = hip_cmd.ki();
+      hip_motor_LF_->txdata_buffer_.KD_ = hip_cmd.kd();
+      
+      // Mark mode change as pending (will be applied outside mutex)
+      Mode new_mode = protoToMode(hip_cmd.motor_mode());
+      if (new_mode != hip_motor_LF_->current_mode_) {
+        pending_mode_LF_.pending = true;
+        pending_mode_LF_.desired_mode = new_mode;
+      }
+    }
+    
+    // Steering and hub motors from limb module 0
+    if (limb_modules_list_.size() > 0) {
+      auto& limb_a = limb_modules_list_[0];
+      
+      // Steering motor
+      if (leg_a.has_steering()) {
+        const auto& steering_cmd = leg_a.steering();
+        limb_a.steering_motor.mode_des_ = protoToLimbMode(steering_cmd.motor_mode());
+        limb_a.steering_motor.pos_des_.as_float = steering_cmd.position();
+        limb_a.steering_motor.vel_des_ = steering_cmd.velocity();
+        limb_a.steering_motor.trq_des_ = steering_cmd.torque();
+      }
+      
+      // Hub/wheel motor
+      if (leg_a.has_hub()) {
+        const auto& hub_cmd = leg_a.hub();
+        limb_a.wheel_motor.mode_des_ = protoToLimbMode(hub_cmd.motor_mode());
+        limb_a.wheel_motor.pos_des_.as_int = hub_cmd.position();
+        limb_a.wheel_motor.vel_des_ = hub_cmd.velocity();
+        limb_a.wheel_motor.trq_des_ = hub_cmd.torque();
+      }
+    }
+  }
+
+  // Module B: LH (Left Hind) - index 1
+  if (motor_cmd_msg.has_module_b()) {
+    const auto& leg_b = motor_cmd_msg.module_b();
+    
+    // Hip motor (LH)
+    if (hip_motor_LH_ && leg_b.has_hip()) {
+      const auto& hip_cmd = leg_b.hip();
+      
+      hip_motor_LH_->txdata_buffer_.position_ = hip_cmd.position();
+      hip_motor_LH_->txdata_buffer_.torque_ = hip_cmd.torque();
+      hip_motor_LH_->txdata_buffer_.KP_ = hip_cmd.kp();
+      hip_motor_LH_->txdata_buffer_.KI_ = hip_cmd.ki();
+      hip_motor_LH_->txdata_buffer_.KD_ = hip_cmd.kd();
+      
+      Mode new_mode = protoToMode(hip_cmd.motor_mode());
+      if (new_mode != hip_motor_LH_->current_mode_) {
+        pending_mode_LH_.pending = true;
+        pending_mode_LH_.desired_mode = new_mode;
+      }
+    }
+    
+    if (limb_modules_list_.size() > 1) {
+      auto& limb_b = limb_modules_list_[1];
+      
+      if (leg_b.has_steering()) {
+        const auto& steering_cmd = leg_b.steering();
+        limb_b.steering_motor.mode_des_ = protoToLimbMode(steering_cmd.motor_mode());
+        limb_b.steering_motor.pos_des_.as_float = steering_cmd.position();
+        limb_b.steering_motor.vel_des_ = steering_cmd.velocity();
+        limb_b.steering_motor.trq_des_ = steering_cmd.torque();
+      }
+      
+      if (leg_b.has_hub()) {
+        const auto& hub_cmd = leg_b.hub();
+        limb_b.wheel_motor.mode_des_ = protoToLimbMode(hub_cmd.motor_mode());
+        limb_b.wheel_motor.pos_des_.as_int = hub_cmd.position();
+        limb_b.wheel_motor.vel_des_ = hub_cmd.velocity();
+        limb_b.wheel_motor.trq_des_ = hub_cmd.torque();
+      }
+    }
+  }
+
+  // Module C: RF (Right Front) - index 2
+  if (motor_cmd_msg.has_module_c()) {
+    const auto& leg_c = motor_cmd_msg.module_c();
+    
+    // Hip motor (RF)
+    if (hip_motor_RF_ && leg_c.has_hip()) {
+      const auto& hip_cmd = leg_c.hip();
+      
+      hip_motor_RF_->txdata_buffer_.position_ = hip_cmd.position();
+      hip_motor_RF_->txdata_buffer_.torque_ = hip_cmd.torque();
+      hip_motor_RF_->txdata_buffer_.KP_ = hip_cmd.kp();
+      hip_motor_RF_->txdata_buffer_.KI_ = hip_cmd.ki();
+      hip_motor_RF_->txdata_buffer_.KD_ = hip_cmd.kd();
+      
+      Mode new_mode = protoToMode(hip_cmd.motor_mode());
+      if (new_mode != hip_motor_RF_->current_mode_) {
+        pending_mode_RF_.pending = true;
+        pending_mode_RF_.desired_mode = new_mode;
+      }
+    }
+    
+    if (limb_modules_list_.size() > 2) {
+      auto& limb_c = limb_modules_list_[2];
+      
+      if (leg_c.has_steering()) {
+        const auto& steering_cmd = leg_c.steering();
+        limb_c.steering_motor.mode_des_ = protoToLimbMode(steering_cmd.motor_mode());
+        limb_c.steering_motor.pos_des_.as_float = steering_cmd.position();
+        limb_c.steering_motor.vel_des_ = steering_cmd.velocity();
+        limb_c.steering_motor.trq_des_ = steering_cmd.torque();
+      }
+      
+      if (leg_c.has_hub()) {
+        const auto& hub_cmd = leg_c.hub();
+        limb_c.wheel_motor.mode_des_ = protoToLimbMode(hub_cmd.motor_mode());
+        limb_c.wheel_motor.pos_des_.as_int = hub_cmd.position();
+        limb_c.wheel_motor.vel_des_ = hub_cmd.velocity();
+        limb_c.wheel_motor.trq_des_ = hub_cmd.torque();
+      }
+    }
+  }
+
+  // Module D: RH (Right Hind) - index 3
+  if (motor_cmd_msg.has_module_d()) {
+    const auto& leg_d = motor_cmd_msg.module_d();
+    
+    // Hip motor (RH)
+    if (hip_motor_RH_ && leg_d.has_hip()) {
+      const auto& hip_cmd = leg_d.hip();
+      
+      hip_motor_RH_->txdata_buffer_.position_ = hip_cmd.position();
+      hip_motor_RH_->txdata_buffer_.torque_ = hip_cmd.torque();
+      hip_motor_RH_->txdata_buffer_.KP_ = hip_cmd.kp();
+      hip_motor_RH_->txdata_buffer_.KI_ = hip_cmd.ki();
+      hip_motor_RH_->txdata_buffer_.KD_ = hip_cmd.kd();
+      
+      Mode new_mode = protoToMode(hip_cmd.motor_mode());
+      if (new_mode != hip_motor_RH_->current_mode_) {
+        pending_mode_RH_.pending = true;
+        pending_mode_RH_.desired_mode = new_mode;
+      }
+    }
+    
+    if (limb_modules_list_.size() > 3) {
+      auto& limb_d = limb_modules_list_[3];
+      
+      if (leg_d.has_steering()) {
+        const auto& steering_cmd = leg_d.steering();
+        limb_d.steering_motor.mode_des_ = protoToLimbMode(steering_cmd.motor_mode());
+        limb_d.steering_motor.pos_des_.as_float = steering_cmd.position();
+        limb_d.steering_motor.vel_des_ = steering_cmd.velocity();
+        limb_d.steering_motor.trq_des_ = steering_cmd.torque();
+      }
+      
+      if (leg_d.has_hub()) {
+        const auto& hub_cmd = leg_d.hub();
+        limb_d.wheel_motor.mode_des_ = protoToLimbMode(hub_cmd.motor_mode());
+        limb_d.wheel_motor.pos_des_.as_int = hub_cmd.position();
+        limb_d.wheel_motor.vel_des_ = hub_cmd.velocity();
+        limb_d.wheel_motor.trq_des_ = hub_cmd.torque();
+      }
+    }
+  }
+}
+
+// Apply pending mode changes outside mutex (uses blocking switch_mode)
+void Kilin::applyPendingModeChanges() {
+  // Apply mode changes for each motor if pending
+  // This function is called outside mutex, so blocking switch_mode() is safe
+  
+  if (pending_mode_LF_.pending && hip_motor_LF_) {
+    hip_motor_LF_->switch_mode(pending_mode_LF_.desired_mode);
+    pending_mode_LF_.pending = false;
+  }
+  
+  if (pending_mode_LH_.pending && hip_motor_LH_) {
+    hip_motor_LH_->switch_mode(pending_mode_LH_.desired_mode);
+    pending_mode_LH_.pending = false;
+  }
+  
+  if (pending_mode_RF_.pending && hip_motor_RF_) {
+    hip_motor_RF_->switch_mode(pending_mode_RF_.desired_mode);
+    pending_mode_RF_.pending = false;
+  }
+  
+  if (pending_mode_RH_.pending && hip_motor_RH_) {
+    hip_motor_RH_->switch_mode(pending_mode_RH_.desired_mode);
+    pending_mode_RH_.pending = false;
+  }
+}
+
 
 int main(int argc, char* argv[]) {
   signal(SIGINT, inthand);

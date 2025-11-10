@@ -58,9 +58,22 @@ class Kilin {
 
   void powerboardPack(power_msg::PowerStateStamped& power_fb_msg);
   void motorStatePack(motor_msg::MotorStateStamped& motor_state_msg);
+  void motorCommandUnpack(const motor_msg::MotorCmdStamped& motor_cmd_msg);
+  void applyPendingModeChanges();  // Apply mode changes outside mutex
   void rs485Loop_();
 
  private:
+  // Pending mode changes (set by gRPC callback, applied outside mutex)
+  struct PendingModeChange {
+    bool pending;
+    Mode desired_mode;
+    PendingModeChange() : pending(false), desired_mode(Mode::REST) {}
+  };
+  PendingModeChange pending_mode_LF_;
+  PendingModeChange pending_mode_LH_;
+  PendingModeChange pending_mode_RF_;
+  PendingModeChange pending_mode_RH_;
+  
   /* robot state */
   // Shared CAN IO objects (one per CAN port)
   ModuleIO_CAN* can_io_L_;  // Shared by LF and LH motors
