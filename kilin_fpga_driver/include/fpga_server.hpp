@@ -51,6 +51,7 @@ class Kilin {
                         core::Publisher<motor_msg::MotorStateStamped>& state_pub_);
 
   void powerboardPack(power_msg::PowerStateStamped& power_fb_msg);
+  void motorStatePack(motor_msg::MotorStateStamped& motor_state_msg);
   void rs485Loop_();
 
  private:

@@ -383,16 +383,42 @@ int32_t ModuleIO_RS485::get_ni_tx_count() {
 FpgaHandler::FpgaHandler() {
   // init the NiFpga system
   status_ = NiFpga_Initialize();
+  if (NiFpga_IsError(status_)) {
+    error_message("[FPGA Handler] Failed to initialize NI-FPGA. Error code: " + std::to_string(status_));
+    error_message("[FPGA Handler] Please ensure NI-RIO drivers are installed and sbRIO is powered on.");
+    return;
+  }
   important_message("[FPGA Handler] Fpga Initialized");
 
   // init the session variable
+  std::cout << "[FPGA Handler] Opening FPGA session with bitfile: " << NiFpga_FPGA_RS485_v1_2_Bitfile << std::endl;
+  std::cout << "[FPGA Handler] Target resource: RIO0" << std::endl;
+  
   set_fpga_status(NiFpga_Open(NiFpga_FPGA_RS485_v1_2_Bitfile, NiFpga_FPGA_RS485_v1_2_Signature, "RIO0", 0, &session));
-  important_message("[FPGA Handler] Session opened");
+  
+  if (NiFpga_IsError(status_)) {
+    error_message("[FPGA Handler] Failed to open FPGA session. Error code: " + std::to_string(status_));
+    if (status_ == -61200) {
+      error_message("[FPGA Handler] Error -61200: FPGA resource not found or bitfile cannot be loaded.");
+      error_message("[FPGA Handler] Possible causes:");
+      error_message("[FPGA Handler]   1. sbRIO is not powered on or not connected");
+      error_message("[FPGA Handler]   2. Bitfile path is incorrect: " + std::string(NiFpga_FPGA_RS485_v1_2_Bitfile));
+      error_message("[FPGA Handler]   3. NI-RIO drivers are not properly installed");
+      error_message("[FPGA Handler]   4. FPGA resource name 'RIO0' is incorrect for your device");
+      error_message("[FPGA Handler]   5. Another process is using the FPGA");
+    }
+    return;
+  }
+  important_message("[FPGA Handler] Session opened successfully");
 
   pwrb_io = PwrbIO(status_, session);
   important_message("[FPGA Handler] PowerBoard I/O Initialized");
 
   set_fpga_status(NiFpga_ReserveIrqContext(session, &irqContext));
+  if (NiFpga_IsError(status_)) {
+    error_message("[FPGA Handler] Failed to reserve IRQ context. Error code: " + std::to_string(status_));
+    return;
+  }
   important_message("[FPGA Handler] IRQ reserved");
 }
 

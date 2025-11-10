@@ -218,8 +218,9 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
 
   mutex_.unlock();
 
-  // Communication with Node Architecture
+  // Pack motor and power state messages
   powerboardPack(power_fb_msg);
+  motorStatePack(motor_fb_msg);
 
   // Read Command
   mutex_.lock();
@@ -236,17 +237,9 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
       powerboard_state_.at(1) = power_cmd_data.signal();
       powerboard_state_.at(2) = power_cmd_data.power();
 
-      // if (power_cmd_data.robot_mode() == (int)Mode::MOTOR && fsm_.workingMode_ != Mode::MOTOR)
-      //   fsm_.switchMode(Mode::MOTOR);
-      // else if (power_cmd_data.robot_mode() == (int)Mode::HALL_CALIBRATE && fsm_.workingMode_ != Mode::HALL_CALIBRATE &&
-      //          fsm_.workingMode_ != Mode::MOTOR)
-      //   fsm_.switchMode(Mode::HALL_CALIBRATE);
-      // else if (power_cmd_data.robot_mode() == (int)Mode::SET_ZERO && fsm_.workingMode_ != Mode::SET_ZERO)
-      //   fsm_.switchMode(Mode::SET_ZERO);
-      // else if (power_cmd_data.robot_mode() == (int)Mode::CONFIG && fsm_.workingMode_ != Mode::CONFIG)
-      //   fsm_.switchMode(Mode::CONFIG);
-      // else if (power_cmd_data.robot_mode() == (int)Mode::REST && fsm_.workingMode_ != Mode::REST)
-      //   fsm_.switchMode(Mode::REST);
+      // Note: robot_mode control was removed from PowerCmdStamped (grpc_core commit e49d0aa)
+      // Mode control is now done per-motor via Motor.proto instead of at powerboard level
+      
       pwrb_message_updated = 0;
     }
   }
@@ -390,6 +383,155 @@ void Kilin::powerboardPack(power_msg::PowerStateStamped& power_dashboard_reply) 
 
   power_dashboard_reply.set_v_11(fpga_.pwrb_io.get_v_buf(11));
   power_dashboard_reply.set_i_11(fpga_.pwrb_io.get_i_buf(11));
+
+  mutex_.unlock();
+}
+
+void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
+  mutex_.lock();
+  gettimeofday(&t_stamp, NULL);
+  motor_state_msg.mutable_header()->set_seq(seq);
+  motor_state_msg.mutable_header()->mutable_stamp()->set_sec(t_stamp.tv_sec);
+  motor_state_msg.mutable_header()->mutable_stamp()->set_usec(t_stamp.tv_usec);
+
+  // Helper lambda to convert internal Mode to proto MOTORMODE
+  auto modeToProto = [](Mode mode) -> motor_msg::MOTORMODE {
+    switch (mode) {
+      case Mode::REST: return motor_msg::MOTORMODE::REST_MODE;
+      case Mode::CONFIG: return motor_msg::MOTORMODE::CONFIG_MODE;
+      case Mode::SET_ZERO: return motor_msg::MOTORMODE::SET_ZERO;
+      case Mode::HALL_CALIBRATE: return motor_msg::MOTORMODE::HALL_CALIBRATE;
+      case Mode::MOTOR: return motor_msg::MOTORMODE::POSITION_MODE;  // MOTOR maps to POSITION
+      case Mode::CONTROL: return motor_msg::MOTORMODE::POSITION_MODE;
+      default: return motor_msg::MOTORMODE::REST_MODE;
+    }
+  };
+
+  // Helper lambda to convert MotorMode to proto MOTORMODE
+  auto limbModeToProto = [](MotorMode mode) -> motor_msg::MOTORMODE {
+    switch (mode) {
+      case MotorMode::REST: return motor_msg::MOTORMODE::REST_MODE;
+      case MotorMode::CONFIG: return motor_msg::MOTORMODE::CONFIG_MODE;
+      case MotorMode::SET_ZERO: return motor_msg::MOTORMODE::SET_ZERO;
+      case MotorMode::HALL_CALIBRATE: return motor_msg::MOTORMODE::HALL_CALIBRATE;
+      case MotorMode::POSITION: return motor_msg::MOTORMODE::POSITION_MODE;
+      case MotorMode::VELOCITY: return motor_msg::MOTORMODE::VELOCITY_MODE;
+      case MotorMode::TORQUE: return motor_msg::MOTORMODE::TORQUE_MODE;
+      default: return motor_msg::MOTORMODE::REST_MODE;
+    }
+  };
+
+  // Module A: LF (Left Front) - index 0
+  if (limb_modules_list_.size() > 0) {
+    auto* leg_a = motor_state_msg.mutable_module_a();
+    
+    // Hip motor (LF)
+    if (hip_motor_LF_) {
+      auto* hip = leg_a->mutable_hip();
+      hip->set_position(hip_motor_LF_->rxdata_buffer_.position_);
+      hip->set_velocity(hip_motor_LF_->rxdata_buffer_.velocity_);
+      hip->set_torque(hip_motor_LF_->rxdata_buffer_.torque_);
+      hip->set_motor_mode(modeToProto(hip_motor_LF_->current_mode_));
+    }
+    
+    // Steering and hub motors from limb module 0
+    auto& limb_a = limb_modules_list_[0];
+    auto* steering = leg_a->mutable_steering();
+    steering->set_position(limb_a.steering_motor.pos_act_.as_float);
+    steering->set_velocity(limb_a.steering_motor.vel_act_);
+    steering->set_torque(limb_a.steering_motor.trq_act_);
+    steering->set_motor_mode(limbModeToProto(limb_a.steering_motor.mode_act_));
+    
+    auto* hub = leg_a->mutable_hub();
+    hub->set_position(limb_a.wheel_motor.pos_act_.as_int);
+    hub->set_velocity(limb_a.wheel_motor.vel_act_);
+    hub->set_torque(limb_a.wheel_motor.trq_act_);
+    hub->set_motor_mode(limbModeToProto(limb_a.wheel_motor.mode_act_));
+  }
+
+  // Module B: LH (Left Hind) - index 1
+  if (limb_modules_list_.size() > 1) {
+    auto* leg_b = motor_state_msg.mutable_module_b();
+    
+    // Hip motor (LH)
+    if (hip_motor_LH_) {
+      auto* hip = leg_b->mutable_hip();
+      hip->set_position(hip_motor_LH_->rxdata_buffer_.position_);
+      hip->set_velocity(hip_motor_LH_->rxdata_buffer_.velocity_);
+      hip->set_torque(hip_motor_LH_->rxdata_buffer_.torque_);
+      hip->set_motor_mode(modeToProto(hip_motor_LH_->current_mode_));
+    }
+    
+    // Steering and hub motors from limb module 1
+    auto& limb_b = limb_modules_list_[1];
+    auto* steering = leg_b->mutable_steering();
+    steering->set_position(limb_b.steering_motor.pos_act_.as_float);
+    steering->set_velocity(limb_b.steering_motor.vel_act_);
+    steering->set_torque(limb_b.steering_motor.trq_act_);
+    steering->set_motor_mode(limbModeToProto(limb_b.steering_motor.mode_act_));
+    
+    auto* hub = leg_b->mutable_hub();
+    hub->set_position(limb_b.wheel_motor.pos_act_.as_int);
+    hub->set_velocity(limb_b.wheel_motor.vel_act_);
+    hub->set_torque(limb_b.wheel_motor.trq_act_);
+    hub->set_motor_mode(limbModeToProto(limb_b.wheel_motor.mode_act_));
+  }
+
+  // Module C: RF (Right Front) - index 2
+  if (limb_modules_list_.size() > 2) {
+    auto* leg_c = motor_state_msg.mutable_module_c();
+    
+    // Hip motor (RF)
+    if (hip_motor_RF_) {
+      auto* hip = leg_c->mutable_hip();
+      hip->set_position(hip_motor_RF_->rxdata_buffer_.position_);
+      hip->set_velocity(hip_motor_RF_->rxdata_buffer_.velocity_);
+      hip->set_torque(hip_motor_RF_->rxdata_buffer_.torque_);
+      hip->set_motor_mode(modeToProto(hip_motor_RF_->current_mode_));
+    }
+    
+    // Steering and hub motors from limb module 2
+    auto& limb_c = limb_modules_list_[2];
+    auto* steering = leg_c->mutable_steering();
+    steering->set_position(limb_c.steering_motor.pos_act_.as_float);
+    steering->set_velocity(limb_c.steering_motor.vel_act_);
+    steering->set_torque(limb_c.steering_motor.trq_act_);
+    steering->set_motor_mode(limbModeToProto(limb_c.steering_motor.mode_act_));
+    
+    auto* hub = leg_c->mutable_hub();
+    hub->set_position(limb_c.wheel_motor.pos_act_.as_int);
+    hub->set_velocity(limb_c.wheel_motor.vel_act_);
+    hub->set_torque(limb_c.wheel_motor.trq_act_);
+    hub->set_motor_mode(limbModeToProto(limb_c.wheel_motor.mode_act_));
+  }
+
+  // Module D: RH (Right Hind) - index 3
+  if (limb_modules_list_.size() > 3) {
+    auto* leg_d = motor_state_msg.mutable_module_d();
+    
+    // Hip motor (RH)
+    if (hip_motor_RH_) {
+      auto* hip = leg_d->mutable_hip();
+      hip->set_position(hip_motor_RH_->rxdata_buffer_.position_);
+      hip->set_velocity(hip_motor_RH_->rxdata_buffer_.velocity_);
+      hip->set_torque(hip_motor_RH_->rxdata_buffer_.torque_);
+      hip->set_motor_mode(modeToProto(hip_motor_RH_->current_mode_));
+    }
+    
+    // Steering and hub motors from limb module 3
+    auto& limb_d = limb_modules_list_[3];
+    auto* steering = leg_d->mutable_steering();
+    steering->set_position(limb_d.steering_motor.pos_act_.as_float);
+    steering->set_velocity(limb_d.steering_motor.vel_act_);
+    steering->set_torque(limb_d.steering_motor.trq_act_);
+    steering->set_motor_mode(limbModeToProto(limb_d.steering_motor.mode_act_));
+    
+    auto* hub = leg_d->mutable_hub();
+    hub->set_position(limb_d.wheel_motor.pos_act_.as_int);
+    hub->set_velocity(limb_d.wheel_motor.vel_act_);
+    hub->set_torque(limb_d.wheel_motor.trq_act_);
+    hub->set_motor_mode(limbModeToProto(limb_d.wheel_motor.mode_act_));
+  }
 
   mutex_.unlock();
 }
