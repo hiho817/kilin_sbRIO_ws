@@ -59,12 +59,6 @@ Kilin::Kilin() {
   powerboard_state_.push_back(signal_switch_);
   powerboard_state_.push_back(power_switch_);
 
-  // Initialize FSM without hip modules (motors manage their own modes now)
-  // ModeFsm fsm(nullptr, &powerboard_state_);
-  // fsm_ = fsm;
-  // fsm_.NO_CAN_TIMEDOUT_ERROR_ = &NO_CAN_TIMEDOUT_ERROR_;
-  // fsm_.NO_SWITCH_TIMEDOUT_ERROR_ = &NO_SWITCH_TIMEDOUT_ERROR_;
-
   load_config_();
   console_.init_hip_motors(&fpga_, hip_motor_LF_, hip_motor_LH_, hip_motor_RF_, hip_motor_RH_,
                            &limb_modules_list_, &powerboard_state_, &main_mtx_);
@@ -79,18 +73,6 @@ Kilin::Kilin() {
 void Kilin::load_config_() {
   // Load YAML config file
   yaml_node_ = YAML::LoadFile(CONFIG_PATH);
-
-  // load FSM parameters
-  fsm_.dt_ = yaml_node_["MainLoop_period_us"].as<int>() * 0.000001;  // sec
-  fsm_.measure_offset = yaml_node_["Measure_offset"].as<int>();
-  fsm_.cal_vel_ = yaml_node_["Hall_calibration_vel"].as<double>();
-  fsm_.cal_tol_ = yaml_node_["Hall_calibration_tol"].as<double>();
-
-  // load scenario
-  if (yaml_node_["Scenario"].as<std::string>().compare("SingleModule") == 0)
-    fsm_.scenario_ = Scenario::SINGLE_MODULE;
-  else
-    fsm_.scenario_ = Scenario::ROBOT;
 
   // load interrupt periods
   main_irq_period_us_ = yaml_node_["MainLoop_period_us"].as<int>();
@@ -212,9 +194,7 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
   power_msg::PowerStateStamped power_fb_msg;
   motor_msg::MotorStateStamped motor_fb_msg;
 
-  // fsm_.runFsm(motor_fb_msg, motor_cmd_data);
   motor_message_updated = 0;
-  // HALL_CALIBRATED_ = fsm_.hall_calibrated;
 
   mutex_.unlock();
 

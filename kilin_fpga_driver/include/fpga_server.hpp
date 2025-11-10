@@ -12,10 +12,16 @@
 
 #include "console.hpp"
 #include "fpga_handler.hpp"
-#include "fsm.hpp"
 #include "hip_module.hpp"
 #include "hip_motor.hpp"
 #include "limb_module.hpp"
+
+// #include <math.h>
+// #include <unistd.h>
+// #include <Eigen/Dense>
+
+#include "Motor.pb.h"
+#include "Power.pb.h"
 
 #ifndef CONFIG_PATH
 #define CONFIG_PATH "/home/admin/kilin_sbRIO_ws/kilin_fpga_driver/config/config.yaml"
@@ -67,7 +73,6 @@ class Kilin {
   HipMotor* hip_motor_RH_;  // Right Hind (CAN_R, motor_index 1)
   
   std::vector<LimbModule> limb_modules_list_;
-  ModeFsm fsm_;
   bool HALL_CALIBRATED_;
   int timeout_cnt_;
   int max_timeout_cnt_;
