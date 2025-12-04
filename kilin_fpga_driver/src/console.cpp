@@ -797,10 +797,18 @@ void Panel::print_limb_test(FpgaHandler* fpga, vector<LimbModule>* limb_mods) {
               module.io_.get_ni_rx_count(),
               module.io_.get_ni_checksum_ok());
     
-    // TX and RX Buffer on same lines (compact)
+    // Get raw TX data from FPGA
+    uint8_t raw_tx_data[12];
+    module.io_.get_ni_tx_data(raw_tx_data);
+    
+    // TX Buffer: Display struct values and raw bytes
     mvwprintw(win_, line++, 1, "   TX> M1: %02X %02X %08X | M2: %02X %02X %08X",
               module.txdata_buffer_.CMD1, module.txdata_buffer_.SUBCMD1, module.txdata_buffer_.Data1,
               module.txdata_buffer_.CMD2, module.txdata_buffer_.SUBCMD2, module.txdata_buffer_.Data2);
+    mvwprintw(win_, line++, 1, "   Raw> %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+              raw_tx_data[0], raw_tx_data[1], raw_tx_data[2], raw_tx_data[3],
+              raw_tx_data[4], raw_tx_data[5], raw_tx_data[6], raw_tx_data[7],
+              raw_tx_data[8], raw_tx_data[9], raw_tx_data[10], raw_tx_data[11]);
     
     mvwprintw(win_, line++, 1, "   RX> M1: %02X %08X %02X %08X | M2: %02X %08X %02X %08X",
               module.rxdata_buffer_.CMD1, module.rxdata_buffer_.POS1, module.rxdata_buffer_.STAT1, module.rxdata_buffer_.I1,

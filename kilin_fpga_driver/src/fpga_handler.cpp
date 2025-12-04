@@ -351,6 +351,10 @@ void ModuleIO_RS485::set_ni_tx_data(const uint8_t* tx_data) {
   set_fpga_status(NiFpga_WriteArrayU8(fpga_session_, r_tx_data_, tx_data, r_tx_data_size_));
 }
 
+void ModuleIO_RS485::get_ni_tx_data(uint8_t* tx_data) {
+  set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_tx_data_, tx_data, r_tx_data_size_));
+}
+
 void ModuleIO_RS485::get_ni_rx_data(uint8_t* rx_data) {
   set_fpga_status(NiFpga_ReadArrayU8(fpga_session_, r_rx_data_, rx_data, r_rx_data_size_));
 }

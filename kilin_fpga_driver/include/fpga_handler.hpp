@@ -119,6 +119,7 @@ class ModuleIO_RS485 {
   // RS485 communication functions
   void set_ni_RS485_transmit(NiFpga_Bool value);
   void set_ni_tx_data(const uint8_t* tx_data);  // Note: tx_data must be r_tx_data_size_ bytes (12 bytes for RS485)
+  void get_ni_tx_data(uint8_t* tx_data);  // Reads r_tx_data_size_ bytes (12 bytes for RS485)
   void get_ni_rx_data(uint8_t* rx_data);  // Reads r_rx_data_size_ bytes (20 bytes for RS485)
   void get_ni_rx_buf(uint8_t* rx_buf);    // Reads r_rx_buf_size_ bytes (32 bytes for RS485)
   
