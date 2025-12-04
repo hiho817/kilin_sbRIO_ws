@@ -46,6 +46,9 @@ LimbModule::LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _st
   mode_change_sent_steering_ = false;
   mode_change_sent_wheel_ = false;
 
+  // Initialize calibration state flags
+  cal_sent_steering_ = false;
+
   // Initialize TX buffer (no header/checksum, FPGA driver handles those)
   memset(&txdata_buffer_, 0, sizeof(txdata_buffer_));
 
@@ -129,18 +132,24 @@ bool LimbModule::pack_tx_buffer() {
     mode_change_sent_steering_ = true;  // Mark that mode change command is sent
   } else {
     // Steering motor sends normal command
+    txdata_buffer_.Data1 = 0;
     switch (steering_motor.mode_des_) {
       case MotorMode::REST:
         txdata_buffer_.CMD1 = CMD_RESET;
-        txdata_buffer_.Data1 = 0;
+        cal_sent_steering_ = false;  // Clear calibration flag when leaving calibration mode
         break;
       case MotorMode::SET_ZERO:
         txdata_buffer_.CMD1 = CMD_SET_ZERO;
-        txdata_buffer_.Data1 = 0;
         break;
       case MotorMode::HALL_CALIBRATE:
-        txdata_buffer_.CMD1 = CMD_HAL_CAL;
-        txdata_buffer_.Data1 = 0;
+        if (!cal_sent_steering_) {
+          // First time in calibration mode - send calibration command
+          txdata_buffer_.CMD1 = CMD_HAL_CAL;
+          cal_sent_steering_ = true;
+        } else {
+          // Calibration command already sent - keep sending echo mode
+          txdata_buffer_.CMD1 = CMD_ECHO;
+        }
         break;
       case MotorMode::POSITION:
         txdata_buffer_.CMD1 = CMD_MOTOR_CMD;
@@ -149,7 +158,6 @@ bool LimbModule::pack_tx_buffer() {
         break;
       default:
         txdata_buffer_.CMD1 = CMD_RESET;
-        txdata_buffer_.Data1 = 0;
         break;
     }
   }
@@ -243,6 +251,10 @@ void LimbModule::unpack_rx_buffer() {
       steering_motor.mode_act_ = MotorMode::SET_ZERO;
       break;
     case CMD_HAL_CAL:
+      steering_motor.mode_act_ = MotorMode::HALL_CALIBRATE;
+      break;
+    case CMD_ECHO:
+      // Echo mode means motor is still in calibration, keep HALL_CALIBRATE state
       steering_motor.mode_act_ = MotorMode::HALL_CALIBRATE;
       break;
     case CMD_MOTOR_CMD:

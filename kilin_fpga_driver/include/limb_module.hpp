@@ -20,7 +20,7 @@ enum ServoCmd : uint8_t {
   CMD_HAL_CAL = 0x03,     // Reserved
   CMD_MOTOR_MODE = 0x04,  // this is to set mode (pos or vel or torque)
   CMD_MOTOR_CMD = 0x05,   // this is the one that makes the motor move
-  CMD_TEST = 0x06
+  CMD_ECHO = 0x06         // Echo mode - used after sending calibration command
 };
 
 /*= Servo Sub CMD =*/
@@ -164,6 +164,9 @@ class LimbModule {
   MotorMode prev_mode_des_wheel_;
   bool mode_change_sent_steering_;  // Flag indicating mode change command was sent
   bool mode_change_sent_wheel_;
+
+  // Calibration state tracking
+  bool cal_sent_steering_;  // Track if calibration command has been sent for steering motor
 
   // Helper methods
   void load_config();
