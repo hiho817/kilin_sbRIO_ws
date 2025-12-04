@@ -89,9 +89,16 @@ void Kilin::load_config_() {
   // But motors on the same CAN port share the same IO object
   cout << "Initializing individual hip motors..." << endl;
 
+  // Read CAN port names from YAML configuration
+  std::string can_port_L = yaml_node_["L_Module"]["CAN_PORT"].as<std::string>();
+  std::string can_port_R = yaml_node_["R_Module"]["CAN_PORT"].as<std::string>();
+  
+  cout << "L_Module CAN port: " << can_port_L << endl;
+  cout << "R_Module CAN port: " << can_port_R << endl;
+
   // Create shared CAN IO objects (one per CAN port)
-  can_io_L_ = new ModuleIO_CAN(fpga_.get_fpga_status(), fpga_.session, "MOD1CAN0");
-  can_io_R_ = new ModuleIO_CAN(fpga_.get_fpga_status(), fpga_.session, "MOD1CAN1");
+  can_io_L_ = new ModuleIO_CAN(fpga_.get_fpga_status(), fpga_.session, can_port_L);
+  can_io_R_ = new ModuleIO_CAN(fpga_.get_fpga_status(), fpga_.session, can_port_R);
 
   // Left motors (both share can_io_L_)
   hip_motor_LF_ =
@@ -612,22 +619,23 @@ void Kilin::motorCommandUnpack(const motor_msg::MotorCmdStamped& motor_cmd_msg) 
   if (motor_cmd_msg.has_module_b()) {
     const auto& leg_b = motor_cmd_msg.module_b();
     
-    // Hip motor (LH)
-    if (hip_motor_LH_ && leg_b.has_hip()) {
+    // Hip motor (LH) // change to RF
+    if (hip_motor_RF_ && leg_b.has_hip()) {
       const auto& hip_cmd = leg_b.hip();
       
-      hip_motor_LH_->txdata_buffer_.position_ = hip_cmd.position();
-      hip_motor_LH_->txdata_buffer_.torque_ = hip_cmd.torque();
-      hip_motor_LH_->txdata_buffer_.KP_ = hip_cmd.kp();
-      hip_motor_LH_->txdata_buffer_.KI_ = hip_cmd.ki();
-      hip_motor_LH_->txdata_buffer_.KD_ = hip_cmd.kd();
+      hip_motor_RF_->txdata_buffer_.position_ = hip_cmd.position();
+      hip_motor_RF_->txdata_buffer_.torque_ = hip_cmd.torque();
+      hip_motor_RF_->txdata_buffer_.KP_ = hip_cmd.kp();
+      hip_motor_RF_->txdata_buffer_.KI_ = hip_cmd.ki();
+      hip_motor_RF_->txdata_buffer_.KD_ = hip_cmd.kd();
       
       Mode new_mode = protoToMode(hip_cmd.motor_mode());
-      if (new_mode != hip_motor_LH_->current_mode_) {
-        pending_mode_LH_.pending = true;
-        pending_mode_LH_.desired_mode = new_mode;
+      if (new_mode != hip_motor_RF_->current_mode_) {
+        pending_mode_RF_.pending = true;
+        pending_mode_RF_.desired_mode = new_mode;
       }
     }
+
     
     if (limb_modules_list_.size() > 1) {
       auto& limb_b = limb_modules_list_[1];
@@ -654,22 +662,23 @@ void Kilin::motorCommandUnpack(const motor_msg::MotorCmdStamped& motor_cmd_msg) 
   if (motor_cmd_msg.has_module_c()) {
     const auto& leg_c = motor_cmd_msg.module_c();
     
-    // Hip motor (RF)
-    if (hip_motor_RF_ && leg_c.has_hip()) {
+    // Hip motor (RF) change to LH
+    if (hip_motor_LH_ && leg_c.has_hip()) {
       const auto& hip_cmd = leg_c.hip();
       
-      hip_motor_RF_->txdata_buffer_.position_ = hip_cmd.position();
-      hip_motor_RF_->txdata_buffer_.torque_ = hip_cmd.torque();
-      hip_motor_RF_->txdata_buffer_.KP_ = hip_cmd.kp();
-      hip_motor_RF_->txdata_buffer_.KI_ = hip_cmd.ki();
-      hip_motor_RF_->txdata_buffer_.KD_ = hip_cmd.kd();
+      hip_motor_LH_->txdata_buffer_.position_ = hip_cmd.position();
+      hip_motor_LH_->txdata_buffer_.torque_ = hip_cmd.torque();
+      hip_motor_LH_->txdata_buffer_.KP_ = hip_cmd.kp();
+      hip_motor_LH_->txdata_buffer_.KI_ = hip_cmd.ki();
+      hip_motor_LH_->txdata_buffer_.KD_ = hip_cmd.kd();
       
       Mode new_mode = protoToMode(hip_cmd.motor_mode());
-      if (new_mode != hip_motor_RF_->current_mode_) {
-        pending_mode_RF_.pending = true;
-        pending_mode_RF_.desired_mode = new_mode;
+      if (new_mode != hip_motor_LH_->current_mode_) {
+        pending_mode_LH_.pending = true;
+        pending_mode_LH_.desired_mode = new_mode;
       }
     }
+
     
     if (limb_modules_list_.size() > 2) {
       auto& limb_c = limb_modules_list_[2];

@@ -26,7 +26,7 @@ Scenario: "Robot"
 # Bias represented in radian
 L_Module:
   Enable: 1
-  CAN_PORT: "MOD1CAN0"
+  CAN_PORT: "MOD1CAN1"
   Motor_F:
     FW_Version: 3
     CAN_ID: 1
@@ -49,7 +49,7 @@ L_Module:
 # MOD B
 R_Module:
   Enable: 1
-  CAN_PORT: "MOD1CAN1"
+  CAN_PORT: "MOD1CAN0"
   Motor_F:
     FW_Version: 3
     CAN_ID: 1

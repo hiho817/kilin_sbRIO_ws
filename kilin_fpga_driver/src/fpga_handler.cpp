@@ -246,6 +246,13 @@ double PwrbIO::get_v_buf(size_t index) const {
   return buffers_.voltage_buffer[index];
 }
 
+void PwrbIO::get_raw_adc_data(uint16_t* raw_data, size_t size) const {
+  if (size >= 24) {
+    NiFpga_ReadArrayU16(fpga_session_, NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16_Data, 
+                        raw_data, NiFpga_FPGA_RS485_v1_2_IndicatorArrayU16Size_Data);
+  }
+}
+
 // Setter for a single current value
 void PwrbIO::set_i_buf_(size_t index, double value) {
   if (index >= buffers_.current_buffer.size()) {

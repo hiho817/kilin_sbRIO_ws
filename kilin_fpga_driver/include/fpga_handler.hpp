@@ -179,6 +179,9 @@ class PwrbIO {
 
   double get_i_buf(size_t index) const;
   double get_v_buf(size_t index) const;
+  
+  // Get raw ADC values from FPGA
+  void get_raw_adc_data(uint16_t* raw_data, size_t size) const;
 
  private:
   NiFpga_FPGA_RS485_v1_2_ControlBool w_pb_digital_;

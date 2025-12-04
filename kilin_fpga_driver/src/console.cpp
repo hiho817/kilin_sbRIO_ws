@@ -854,10 +854,23 @@ void Panel::print_pwrb_info(FpgaHandler* fpga, bool digital_switch, bool signal_
   mvwprintw(win_, 17, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(10), fpga->pwrb_io.get_i_buf(10));
   mvwprintw(win_, 18, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(11), fpga->pwrb_io.get_i_buf(11));
 
-  // for (int i = 0; i < 12; ++i) {
-  //   mvwprintw(win_, 7 + i, 1, "Voltage: %5.5f, Current: %5.5f", fpga->pwrb_io.get_v_buf(i),
-  //   fpga->pwrb_io.get_i_buf(i));
-  // }
+  // Get and display raw FPGA ADC data
+  uint16_t raw_adc[24];
+  fpga->pwrb_io.get_raw_adc_data(raw_adc, 24);
+  
+  mvwprintw(win_, 19, 1, "Raw ADC -------------------------");
+  mvwprintw(win_, 20, 1, " 0:%04X %04X  1:%04X %04X", 
+            raw_adc[0], raw_adc[1], raw_adc[2], raw_adc[3]);
+  mvwprintw(win_, 21, 1, " 2:%04X %04X  3:%04X %04X",
+            raw_adc[4], raw_adc[5], raw_adc[6], raw_adc[7]);
+  mvwprintw(win_, 22, 1, " 4:%04X %04X  5:%04X %04X",
+            raw_adc[8], raw_adc[9], raw_adc[10], raw_adc[11]);
+  mvwprintw(win_, 23, 1, " 6:%04X %04X  7:%04X %04X",
+            raw_adc[12], raw_adc[13], raw_adc[14], raw_adc[15]);
+  mvwprintw(win_, 24, 1, " 8:%04X %04X  9:%04X %04X",
+            raw_adc[16], raw_adc[17], raw_adc[18], raw_adc[19]);
+  mvwprintw(win_, 25, 1, "10:%04X %04X 11:%04X %04X",
+            raw_adc[20], raw_adc[21], raw_adc[22], raw_adc[23]);
 
   wrefresh(win_);
 }
