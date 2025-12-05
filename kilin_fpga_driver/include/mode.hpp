@@ -14,7 +14,6 @@ enum class Mode {
   HALL_CALIBRATE, // should be in config (echo) after enter calibration to wait for cal done
   MOTOR,
   CONTROL,
-  // must add echo mode for steering calibration 
 };
 
 enum class MotorMode {

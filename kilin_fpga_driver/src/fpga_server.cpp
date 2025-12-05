@@ -443,7 +443,8 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     steering->set_motor_mode(limbModeToProto(limb_a.steering_motor.mode_act_));
     
     auto* hub = leg_a->mutable_hub();
-    hub->set_position(limb_a.wheel_motor.pos_act_.as_int);
+    // Convert from 0.01 deg to radians: position_rad = position_0.01deg / 100 * (π/180)
+    hub->set_position(static_cast<double>(limb_a.wheel_motor.pos_act_.as_int) / 100.0 * M_PI / 180.0);
     hub->set_velocity(limb_a.wheel_motor.vel_act_);
     hub->set_torque(limb_a.wheel_motor.trq_act_);
     hub->set_motor_mode(limbModeToProto(limb_a.wheel_motor.mode_act_));
@@ -471,7 +472,8 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     steering->set_motor_mode(limbModeToProto(limb_b.steering_motor.mode_act_));
     
     auto* hub = leg_b->mutable_hub();
-    hub->set_position(limb_b.wheel_motor.pos_act_.as_int);
+    // Convert from 0.01 deg to radians: position_rad = position_0.01deg / 100 * (π/180)
+    hub->set_position(static_cast<double>(limb_b.wheel_motor.pos_act_.as_int) / 100.0 * M_PI / 180.0);
     hub->set_velocity(limb_b.wheel_motor.vel_act_);
     hub->set_torque(limb_b.wheel_motor.trq_act_);
     hub->set_motor_mode(limbModeToProto(limb_b.wheel_motor.mode_act_));
@@ -499,7 +501,8 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     steering->set_motor_mode(limbModeToProto(limb_c.steering_motor.mode_act_));
     
     auto* hub = leg_c->mutable_hub();
-    hub->set_position(limb_c.wheel_motor.pos_act_.as_int);
+    // Convert from 0.01 deg to radians: position_rad = position_0.01deg / 100 * (π/180)
+    hub->set_position(static_cast<double>(limb_c.wheel_motor.pos_act_.as_int) / 100.0 * M_PI / 180.0);
     hub->set_velocity(limb_c.wheel_motor.vel_act_);
     hub->set_torque(limb_c.wheel_motor.trq_act_);
     hub->set_motor_mode(limbModeToProto(limb_c.wheel_motor.mode_act_));
@@ -527,7 +530,8 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     steering->set_motor_mode(limbModeToProto(limb_d.steering_motor.mode_act_));
     
     auto* hub = leg_d->mutable_hub();
-    hub->set_position(limb_d.wheel_motor.pos_act_.as_int);
+    // Convert from 0.01 deg to radians: position_rad = position_0.01deg / 100 * (π/180)
+    hub->set_position(static_cast<double>(limb_d.wheel_motor.pos_act_.as_int) / 100.0 * M_PI / 180.0);
     hub->set_velocity(limb_d.wheel_motor.vel_act_);
     hub->set_torque(limb_d.wheel_motor.trq_act_);
     hub->set_motor_mode(limbModeToProto(limb_d.wheel_motor.mode_act_));
@@ -608,7 +612,8 @@ void Kilin::motorCommandUnpack(const motor_msg::MotorCmdStamped& motor_cmd_msg) 
       if (leg_a.has_hub()) {
         const auto& hub_cmd = leg_a.hub();
         limb_a.wheel_motor.mode_des_ = protoToLimbMode(hub_cmd.motor_mode());
-        limb_a.wheel_motor.pos_des_.as_int = hub_cmd.position();
+        // Convert from radians to 0.01 deg: position_0.01deg = position_rad * 180/π * 100
+        limb_a.wheel_motor.pos_des_.as_int = static_cast<int32_t>(hub_cmd.position() * 180.0 / M_PI * 100);
         limb_a.wheel_motor.vel_des_ = hub_cmd.velocity();
         limb_a.wheel_motor.trq_des_ = hub_cmd.torque();
       }
@@ -651,7 +656,8 @@ void Kilin::motorCommandUnpack(const motor_msg::MotorCmdStamped& motor_cmd_msg) 
       if (leg_b.has_hub()) {
         const auto& hub_cmd = leg_b.hub();
         limb_b.wheel_motor.mode_des_ = protoToLimbMode(hub_cmd.motor_mode());
-        limb_b.wheel_motor.pos_des_.as_int = hub_cmd.position();
+        // Convert from radians to 0.01 deg: position_0.01deg = position_rad * 180/π * 100
+        limb_b.wheel_motor.pos_des_.as_int = static_cast<int32_t>(hub_cmd.position() * 180.0 / M_PI * 100);
         limb_b.wheel_motor.vel_des_ = hub_cmd.velocity();
         limb_b.wheel_motor.trq_des_ = hub_cmd.torque();
       }
@@ -694,7 +700,8 @@ void Kilin::motorCommandUnpack(const motor_msg::MotorCmdStamped& motor_cmd_msg) 
       if (leg_c.has_hub()) {
         const auto& hub_cmd = leg_c.hub();
         limb_c.wheel_motor.mode_des_ = protoToLimbMode(hub_cmd.motor_mode());
-        limb_c.wheel_motor.pos_des_.as_int = hub_cmd.position();
+        // Convert from radians to 0.01 deg: position_0.01deg = position_rad * 180/π * 100
+        limb_c.wheel_motor.pos_des_.as_int = static_cast<int32_t>(hub_cmd.position() * 180.0 / M_PI * 100);
         limb_c.wheel_motor.vel_des_ = hub_cmd.velocity();
         limb_c.wheel_motor.trq_des_ = hub_cmd.torque();
       }
@@ -736,7 +743,8 @@ void Kilin::motorCommandUnpack(const motor_msg::MotorCmdStamped& motor_cmd_msg) 
       if (leg_d.has_hub()) {
         const auto& hub_cmd = leg_d.hub();
         limb_d.wheel_motor.mode_des_ = protoToLimbMode(hub_cmd.motor_mode());
-        limb_d.wheel_motor.pos_des_.as_int = hub_cmd.position();
+        // Convert from radians to 0.01 deg: position_0.01deg = position_rad * 180/π * 100
+        limb_d.wheel_motor.pos_des_.as_int = static_cast<int32_t>(hub_cmd.position() * 180.0 / M_PI * 100);
         limb_d.wheel_motor.vel_des_ = hub_cmd.velocity();
         limb_d.wheel_motor.trq_des_ = hub_cmd.torque();
       }
