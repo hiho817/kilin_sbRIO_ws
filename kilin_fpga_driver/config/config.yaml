@@ -5,10 +5,10 @@ log_path: "/home/admin/kilin_sbRIO_ws/kilin_fpga_driver/log/sample_test.csv"
 # Interrupt Setup, Triggered By FPGA IRQ
 # IRQ 0
 # Loop Period (type int) of the main loop, where controllers were implemented
-MainLoop_period_us: 1000
+MainLoop_period_us: 10000
 # IRQ 1
 # Loop Period (type int) of the loop handling CAN transceiving, at least 1000 us
-CANLoop_period_us: 1000
+CANLoop_period_us: 10000
 # CAN Bus timeout
 CAN_Timeout_us: 1000
 
