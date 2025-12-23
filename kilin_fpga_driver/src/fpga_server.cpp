@@ -432,6 +432,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
       hip->set_velocity(hip_motor_LF_->rxdata_buffer_.velocity_);
       hip->set_torque(hip_motor_LF_->rxdata_buffer_.torque_);
       hip->set_motor_mode(modeToProto(hip_motor_LF_->current_mode_));
+      hip->set_error_code(hip_motor_LF_->CAN_mtr_timedout_ ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     }
     
     // Steering and hub motors from limb module 0
@@ -441,6 +442,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     steering->set_velocity(limb_a.steering_motor.vel_act_);
     steering->set_torque(limb_a.steering_motor.trq_act_);
     steering->set_motor_mode(limbModeToProto(limb_a.steering_motor.mode_act_));
+    steering->set_error_code(limb_a.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     
     auto* hub = leg_a->mutable_hub();
     // Convert from 0.01 deg to radians: position_rad = position_0.01deg / 100 * (π/180)
@@ -448,6 +450,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     hub->set_velocity(limb_a.wheel_motor.vel_act_);
     hub->set_torque(limb_a.wheel_motor.trq_act_);
     hub->set_motor_mode(limbModeToProto(limb_a.wheel_motor.mode_act_));
+    hub->set_error_code(limb_a.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
   }
 
   // Module B: LH (Left Hind) - index 1
@@ -461,6 +464,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
       hip->set_velocity(hip_motor_LH_->rxdata_buffer_.velocity_);
       hip->set_torque(hip_motor_LH_->rxdata_buffer_.torque_);
       hip->set_motor_mode(modeToProto(hip_motor_LH_->current_mode_));
+      hip->set_error_code(hip_motor_LH_->CAN_mtr_timedout_ ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     }
     
     // Steering and hub motors from limb module 1
@@ -470,6 +474,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     steering->set_velocity(limb_b.steering_motor.vel_act_);
     steering->set_torque(limb_b.steering_motor.trq_act_);
     steering->set_motor_mode(limbModeToProto(limb_b.steering_motor.mode_act_));
+    steering->set_error_code(limb_b.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     
     auto* hub = leg_b->mutable_hub();
     // Convert from 0.01 deg to radians: position_rad = position_0.01deg / 100 * (π/180)
@@ -477,6 +482,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     hub->set_velocity(limb_b.wheel_motor.vel_act_);
     hub->set_torque(limb_b.wheel_motor.trq_act_);
     hub->set_motor_mode(limbModeToProto(limb_b.wheel_motor.mode_act_));
+    hub->set_error_code(limb_b.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
   }
 
   // Module C: RF (Right Front) - index 2
@@ -490,6 +496,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
       hip->set_velocity(hip_motor_RF_->rxdata_buffer_.velocity_);
       hip->set_torque(hip_motor_RF_->rxdata_buffer_.torque_);
       hip->set_motor_mode(modeToProto(hip_motor_RF_->current_mode_));
+      hip->set_error_code(hip_motor_RF_->CAN_mtr_timedout_ ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     }
     
     // Steering and hub motors from limb module 2
@@ -499,6 +506,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     steering->set_velocity(limb_c.steering_motor.vel_act_);
     steering->set_torque(limb_c.steering_motor.trq_act_);
     steering->set_motor_mode(limbModeToProto(limb_c.steering_motor.mode_act_));
+    steering->set_error_code(limb_c.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     
     auto* hub = leg_c->mutable_hub();
     // Convert from 0.01 deg to radians: position_rad = position_0.01deg / 100 * (π/180)
@@ -506,6 +514,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     hub->set_velocity(limb_c.wheel_motor.vel_act_);
     hub->set_torque(limb_c.wheel_motor.trq_act_);
     hub->set_motor_mode(limbModeToProto(limb_c.wheel_motor.mode_act_));
+    hub->set_error_code(limb_c.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
   }
 
   // Module D: RH (Right Hind) - index 3
@@ -519,6 +528,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
       hip->set_velocity(hip_motor_RH_->rxdata_buffer_.velocity_);
       hip->set_torque(hip_motor_RH_->rxdata_buffer_.torque_);
       hip->set_motor_mode(modeToProto(hip_motor_RH_->current_mode_));
+      hip->set_error_code(hip_motor_RH_->CAN_mtr_timedout_ ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     }
     
     // Steering and hub motors from limb module 3
@@ -528,6 +538,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     steering->set_velocity(limb_d.steering_motor.vel_act_);
     steering->set_torque(limb_d.steering_motor.trq_act_);
     steering->set_motor_mode(limbModeToProto(limb_d.steering_motor.mode_act_));
+    steering->set_error_code(limb_d.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     
     auto* hub = leg_d->mutable_hub();
     // Convert from 0.01 deg to radians: position_rad = position_0.01deg / 100 * (π/180)
@@ -535,6 +546,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     hub->set_velocity(limb_d.wheel_motor.vel_act_);
     hub->set_torque(limb_d.wheel_motor.trq_act_);
     hub->set_motor_mode(limbModeToProto(limb_d.wheel_motor.mode_act_));
+    hub->set_error_code(limb_d.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
   }
 
   mutex_.unlock();
