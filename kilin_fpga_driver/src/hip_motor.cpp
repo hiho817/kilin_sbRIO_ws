@@ -221,7 +221,7 @@ bool HipMotor::switch_mode(Mode next_mode) {
 
   bool success = false;
   double time_elapsed = 0;
-  const double timeout = 3.0;  // 3 second timeout
+  const double timeout = 0.1;  // 0.1 second timeout
 
   while (!success && time_elapsed < timeout) {
     // Set the mode
