@@ -417,6 +417,7 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
       case MotorMode::POSITION: return motor_msg::MOTORMODE::POSITION_MODE;
       case MotorMode::VELOCITY: return motor_msg::MOTORMODE::VELOCITY_MODE;
       case MotorMode::TORQUE: return motor_msg::MOTORMODE::TORQUE_MODE;
+      case MotorMode::BRAKE: return motor_msg::MOTORMODE::BRAKE_MODE;
       default: return motor_msg::MOTORMODE::REST_MODE;
     }
   };
@@ -576,6 +577,7 @@ MotorMode protoToLimbMode(motor_msg::MOTORMODE proto_mode) {
     case motor_msg::MOTORMODE::POSITION_MODE: return MotorMode::POSITION;
     case motor_msg::MOTORMODE::VELOCITY_MODE: return MotorMode::VELOCITY;
     case motor_msg::MOTORMODE::TORQUE_MODE: return MotorMode::TORQUE;
+    case motor_msg::MOTORMODE::BRAKE_MODE: return MotorMode::BRAKE;
     default: return MotorMode::REST;
   }
 }

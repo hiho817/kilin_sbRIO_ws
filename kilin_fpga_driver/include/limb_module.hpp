@@ -34,7 +34,8 @@ enum ServoSubCmd : uint8_t {
   // SUBCMD for CMD_MOTOR_MODE of wheelhub motor
   SUBCMD_MOTOR_POSITON = 0x00,
   SUBCMD_MOTOR_SPEED = 0x01,
-  SUBCMD_MOTOR_TORQUE = 0x02
+  SUBCMD_MOTOR_TORQUE = 0x02,
+  SUBCMD_MOTOR_BRAKE = 0x03
 };
 
 // TX Data Buffer with union for easy byte access
@@ -164,6 +165,8 @@ class LimbModule {
   MotorMode prev_mode_des_wheel_;
   bool mode_change_sent_steering_;  // Flag indicating mode change command was sent
   bool mode_change_sent_wheel_;
+  bool intermediate_rest_transition_wheel_;  // Flag for REST transition before BRAKE
+  MotorMode final_mode_des_wheel_;  // Store final desired mode during intermediate transition
 
   // Calibration state tracking
   bool cal_sent_steering_;  // Track if calibration command has been sent for steering motor

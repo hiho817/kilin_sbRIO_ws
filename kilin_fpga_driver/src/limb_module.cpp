@@ -115,7 +115,7 @@ bool LimbModule::pack_tx_buffer() {
 
   // For wheel motor (supports POSITION/VELOCITY/TORQUE)
   if ((wheel_motor.mode_des_ == MotorMode::POSITION || wheel_motor.mode_des_ == MotorMode::VELOCITY ||
-       wheel_motor.mode_des_ == MotorMode::TORQUE) &&
+       wheel_motor.mode_des_ == MotorMode::TORQUE || wheel_motor.mode_des_ == MotorMode::BRAKE) &&
       prev_mode_des_wheel_ != wheel_motor.mode_des_ && !mode_change_sent_wheel_) {
     need_mode_change_wheel = true;
   } else if (!RS485_module_timedout && mode_change_sent_wheel_) {
@@ -175,6 +175,9 @@ bool LimbModule::pack_tx_buffer() {
       case MotorMode::TORQUE:
         txdata_buffer_.SUBCMD2 = SUBCMD_MOTOR_TORQUE;
         break;
+      case MotorMode::BRAKE:
+        txdata_buffer_.SUBCMD2 = SUBCMD_MOTOR_BRAKE;
+        break;
       default:  // POSITION
         txdata_buffer_.SUBCMD2 = SUBCMD_MOTOR_POSITON;
         break;
@@ -204,10 +207,28 @@ bool LimbModule::pack_tx_buffer() {
         txdata_buffer_.CMD2 = CMD_MOTOR_CMD;
         txdata_buffer_.Data2 = static_cast<int32_t>(wheel_motor.vel_des_);
         break;
-      case MotorMode::TORQUE:
+      case MotorMode::TORQUE: {
         txdata_buffer_.CMD2 = CMD_MOTOR_CMD;
-        txdata_buffer_.Data2 = static_cast<int32_t>(wheel_motor.trq_des_);
+        // Scale torque by 100, clamp to int16, place into upper 16 bits
+        constexpr double SCALE = 100.0;
+        double scaled = wheel_motor.trq_des_ * SCALE;
+        if (scaled > static_cast<double>(INT16_MAX)) scaled = static_cast<double>(INT16_MAX);
+        if (scaled < static_cast<double>(INT16_MIN)) scaled = static_cast<double>(INT16_MIN);
+        int16_t v16 = static_cast<int16_t>(std::lround(scaled));
+        txdata_buffer_.Data2 = static_cast<int32_t>(static_cast<uint32_t>(static_cast<uint16_t>(v16)) << 16);
         break;
+      }
+      case MotorMode::BRAKE: {
+        txdata_buffer_.CMD2 = CMD_MOTOR_CMD;
+        // Same packing as torque; reuse trq_des_ value
+        constexpr double SCALE = 100.0;
+        double scaled = wheel_motor.trq_des_ * SCALE;
+        if (scaled > static_cast<double>(INT16_MAX)) scaled = static_cast<double>(INT16_MAX);
+        if (scaled < static_cast<double>(INT16_MIN)) scaled = static_cast<double>(INT16_MIN);
+        int16_t v16 = static_cast<int16_t>(std::lround(scaled));
+        txdata_buffer_.Data2 = static_cast<int32_t>(static_cast<uint32_t>(static_cast<uint16_t>(v16)) << 16);
+        break;
+      }
       default:
         txdata_buffer_.CMD2 = CMD_RESET;
         txdata_buffer_.Data2 = 0;
@@ -312,7 +333,7 @@ void LimbModule::unpack_rx_buffer() {
   // uint8_t wheel_status = rxdata_buffer_.STAT2;
 
   // I2 contains current feedback (scaled by 100)
-  // wheel_motor.trq_act_ = static_cast<double>(rxdata_buffer_.I2) / 100.0;
+  wheel_motor.trq_act_ = static_cast<double>(rxdata_buffer_.I2) / 100.0;
 
   // Clear timeout flags on successful communication
   RS485_module_timedout = false;

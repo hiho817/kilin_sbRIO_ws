@@ -24,6 +24,7 @@ enum class MotorMode {
   POSITION,
   VELOCITY,
   TORQUE,
+  BRAKE
 };
 
 enum class Behavior { SET_THETA, TCP_SLAVE, CUSTOM_1, CUSTOM_2, CUSTOM_3 };
