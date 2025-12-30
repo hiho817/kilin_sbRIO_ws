@@ -45,6 +45,10 @@ LimbModule::LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _st
   prev_mode_des_wheel_ = MotorMode::REST;
   mode_change_sent_steering_ = false;
   mode_change_sent_wheel_ = false;
+  pending_second_leg_steering_ = false;
+  pending_second_leg_wheel_ = false;
+  target_mode_steering_ = MotorMode::REST;
+  target_mode_wheel_ = MotorMode::REST;
 
   // Initialize calibration state flags
   cal_sent_steering_ = false;
@@ -105,22 +109,70 @@ bool LimbModule::pack_tx_buffer() {
   bool need_mode_change_wheel = false;
 
   // For steering motor (only supports POSITION)
+  // Enforce REST-first before entering POSITION
+  MotorMode desired_steer_mode = steering_motor.mode_des_;
+  if (desired_steer_mode == MotorMode::POSITION && prev_mode_des_steering_ != MotorMode::REST &&
+      prev_mode_des_steering_ != desired_steer_mode && !mode_change_sent_steering_ &&
+      !pending_second_leg_steering_) {
+    // First leg: request REST
+    target_mode_steering_ = desired_steer_mode;
+    steering_motor.mode_des_ = MotorMode::REST;
+    pending_second_leg_steering_ = true;
+  }
+
   if (steering_motor.mode_des_ == MotorMode::POSITION && prev_mode_des_steering_ != steering_motor.mode_des_ &&
       !mode_change_sent_steering_) {
     need_mode_change_steering = true;
-  } else if (!RS485_module_timedout && mode_change_sent_steering_) {
-    // Mode change command was acknowledged (no timeout), clear the flag
-    mode_change_sent_steering_ = false;
+  } else if (mode_change_sent_steering_) {
+    // Mode change command was sent; wait for acknowledgment
+    if (!RS485_module_timedout) {
+      // Clear once a cycle passes without timeout
+      mode_change_sent_steering_ = false;
+      // If REST leg just acknowledged and we need the second leg, set up the final mode
+      if (pending_second_leg_steering_ && steering_motor.mode_des_ == MotorMode::REST) {
+        prev_mode_des_steering_ = MotorMode::REST;  // lock prev to REST for next comparison
+        steering_motor.mode_des_ = target_mode_steering_;
+        // Keep pending flag true to avoid updating prev_mode to final prematurely
+      } else if (pending_second_leg_steering_ && steering_motor.mode_des_ == target_mode_steering_) {
+        // Second leg completed
+        pending_second_leg_steering_ = false;
+      }
+    }
   }
 
-  // For wheel motor (supports POSITION/VELOCITY/TORQUE)
+  // For wheel motor (supports POSITION/VELOCITY/TORQUE/BRAKE)
+  // Enforce REST-first before changing to any command mode
+  MotorMode desired_wheel_mode = wheel_motor.mode_des_;
+  if ((desired_wheel_mode == MotorMode::POSITION || desired_wheel_mode == MotorMode::VELOCITY ||
+       desired_wheel_mode == MotorMode::TORQUE || desired_wheel_mode == MotorMode::BRAKE) &&
+      prev_mode_des_wheel_ != MotorMode::REST && prev_mode_des_wheel_ != desired_wheel_mode &&
+      !mode_change_sent_wheel_ && !pending_second_leg_wheel_) {
+    // First leg: request REST
+    target_mode_wheel_ = desired_wheel_mode;
+    wheel_motor.mode_des_ = MotorMode::REST;
+    pending_second_leg_wheel_ = true;
+  }
+  
   if ((wheel_motor.mode_des_ == MotorMode::POSITION || wheel_motor.mode_des_ == MotorMode::VELOCITY ||
-       wheel_motor.mode_des_ == MotorMode::TORQUE || wheel_motor.mode_des_ == MotorMode::BRAKE) &&
+       wheel_motor.mode_des_ == MotorMode::TORQUE || wheel_motor.mode_des_ == MotorMode::BRAKE ||
+       wheel_motor.mode_des_ == MotorMode::REST) &&
       prev_mode_des_wheel_ != wheel_motor.mode_des_ && !mode_change_sent_wheel_) {
     need_mode_change_wheel = true;
-  } else if (!RS485_module_timedout && mode_change_sent_wheel_) {
-    // Mode change command was acknowledged (no timeout), clear the flag
-    mode_change_sent_wheel_ = false;
+  } else if (mode_change_sent_wheel_) {
+    // Mode change command was sent; wait for acknowledgment
+    if (!RS485_module_timedout) {
+      mode_change_sent_wheel_ = false;
+
+      if (pending_second_leg_wheel_ && wheel_motor.mode_des_ == MotorMode::REST) {
+        // REST leg acknowledged; prepare second leg
+        prev_mode_des_wheel_ = MotorMode::REST;
+        wheel_motor.mode_des_ = target_mode_wheel_;
+        // Keep pending flag true to skip prev_mode update until second leg completes
+      } else if (pending_second_leg_wheel_ && wheel_motor.mode_des_ == target_mode_wheel_) {
+        // Final leg acknowledged
+        pending_second_leg_wheel_ = false;
+      }
+    }
   }
 
   // Pack steering motor command
@@ -165,20 +217,28 @@ bool LimbModule::pack_tx_buffer() {
   // Pack wheel motor command
   if (need_mode_change_wheel) {
     // Wheel motor needs mode change
-    txdata_buffer_.CMD2 = CMD_MOTOR_MODE;
     txdata_buffer_.Data2 = 0;
 
     switch (wheel_motor.mode_des_) {
       case MotorMode::VELOCITY:
+        txdata_buffer_.CMD2 = CMD_MOTOR_MODE;
         txdata_buffer_.SUBCMD2 = SUBCMD_MOTOR_SPEED;
         break;
       case MotorMode::TORQUE:
+        txdata_buffer_.CMD2 = CMD_MOTOR_MODE;
         txdata_buffer_.SUBCMD2 = SUBCMD_MOTOR_TORQUE;
         break;
       case MotorMode::BRAKE:
+        txdata_buffer_.CMD2 = CMD_MOTOR_MODE;
         txdata_buffer_.SUBCMD2 = SUBCMD_MOTOR_BRAKE;
         break;
+      case MotorMode::REST:
+        // REST should send reset directly, not a motor-mode subcommand
+        txdata_buffer_.CMD2 = CMD_RESET;
+        txdata_buffer_.SUBCMD2 = static_cast<ServoSubCmd>(0);
+        break;
       default:  // POSITION
+        txdata_buffer_.CMD2 = CMD_MOTOR_MODE;
         txdata_buffer_.SUBCMD2 = SUBCMD_MOTOR_POSITON;
         break;
     }
@@ -238,10 +298,10 @@ bool LimbModule::pack_tx_buffer() {
 
   // Update previous mode to current mode for next cycle comparison
   // Only update if not currently waiting for mode change acknowledgment
-  if (!mode_change_sent_steering_) {
+  if (!mode_change_sent_steering_ && !pending_second_leg_steering_) {
     prev_mode_des_steering_ = steering_motor.mode_des_;
   }
-  if (!mode_change_sent_wheel_) {
+  if (!mode_change_sent_wheel_ && !pending_second_leg_wheel_) {
     prev_mode_des_wheel_ = wheel_motor.mode_des_;
   }
 
