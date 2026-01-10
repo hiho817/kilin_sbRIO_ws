@@ -165,10 +165,8 @@ class LimbModule {
   MotorMode prev_mode_des_wheel_;
   bool mode_change_sent_steering_;  // Flag indicating mode change command was sent
   bool mode_change_sent_wheel_;
-  // REST-first transition helpers
-  bool pending_second_leg_steering_;  // True after sending REST, waiting to send final mode
+  // REST-first transition helpers (wheel only)
   bool pending_second_leg_wheel_;
-  MotorMode target_mode_steering_;    // Final target after REST
   MotorMode target_mode_wheel_;
 
   // Calibration state tracking

@@ -45,9 +45,7 @@ LimbModule::LimbModule(std::string _label, YAML::Node _config, NiFpga_Status _st
   prev_mode_des_wheel_ = MotorMode::REST;
   mode_change_sent_steering_ = false;
   mode_change_sent_wheel_ = false;
-  pending_second_leg_steering_ = false;
   pending_second_leg_wheel_ = false;
-  target_mode_steering_ = MotorMode::REST;
   target_mode_wheel_ = MotorMode::REST;
 
   // Initialize calibration state flags
@@ -109,35 +107,12 @@ bool LimbModule::pack_tx_buffer() {
   bool need_mode_change_wheel = false;
 
   // For steering motor (only supports POSITION)
-  // Enforce REST-first before entering POSITION
-  MotorMode desired_steer_mode = steering_motor.mode_des_;
-  if (desired_steer_mode == MotorMode::POSITION && prev_mode_des_steering_ != MotorMode::REST &&
-      prev_mode_des_steering_ != desired_steer_mode && !mode_change_sent_steering_ &&
-      !pending_second_leg_steering_) {
-    // First leg: request REST
-    target_mode_steering_ = desired_steer_mode;
-    steering_motor.mode_des_ = MotorMode::REST;
-    pending_second_leg_steering_ = true;
-  }
-
   if (steering_motor.mode_des_ == MotorMode::POSITION && prev_mode_des_steering_ != steering_motor.mode_des_ &&
       !mode_change_sent_steering_) {
     need_mode_change_steering = true;
-  } else if (mode_change_sent_steering_) {
-    // Mode change command was sent; wait for acknowledgment
-    if (!RS485_module_timedout) {
-      // Clear once a cycle passes without timeout
-      mode_change_sent_steering_ = false;
-      // If REST leg just acknowledged and we need the second leg, set up the final mode
-      if (pending_second_leg_steering_ && steering_motor.mode_des_ == MotorMode::REST) {
-        prev_mode_des_steering_ = MotorMode::REST;  // lock prev to REST for next comparison
-        steering_motor.mode_des_ = target_mode_steering_;
-        // Keep pending flag true to avoid updating prev_mode to final prematurely
-      } else if (pending_second_leg_steering_ && steering_motor.mode_des_ == target_mode_steering_) {
-        // Second leg completed
-        pending_second_leg_steering_ = false;
-      }
-    }
+  } else if (!RS485_module_timedout && mode_change_sent_steering_) {
+    // Mode change command was acknowledged (no timeout), clear the flag
+    mode_change_sent_steering_ = false;
   }
 
   // For wheel motor (supports POSITION/VELOCITY/TORQUE/BRAKE)
@@ -298,7 +273,7 @@ bool LimbModule::pack_tx_buffer() {
 
   // Update previous mode to current mode for next cycle comparison
   // Only update if not currently waiting for mode change acknowledgment
-  if (!mode_change_sent_steering_ && !pending_second_leg_steering_) {
+  if (!mode_change_sent_steering_) {
     prev_mode_des_steering_ = steering_motor.mode_des_;
   }
   if (!mode_change_sent_wheel_ && !pending_second_leg_wheel_) {
