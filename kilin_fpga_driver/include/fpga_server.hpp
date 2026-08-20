@@ -6,6 +6,7 @@
 #include <yaml.h>
 
 #include <fstream>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -33,7 +34,7 @@ bool is_sys_stop();
 class Kilin {
  public:
   Kilin();
-  // ~Kilin();
+  ~Kilin();
 
   NiFpga_Status get_fpga_status() { return fpga_.get_fpga_status(); };
 
@@ -50,6 +51,10 @@ class Kilin {
   /* header msg */
   struct timeval t_stamp;
   int seq;
+
+  // Read by the safe console monitor without touching the FPGA session.
+  std::atomic<uint64_t> main_loop_heartbeat_{0};
+  std::atomic<uint64_t> can_loop_heartbeat_{0};
 
   void interruptHandler(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
                         core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,

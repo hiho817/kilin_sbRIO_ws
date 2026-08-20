@@ -25,9 +25,8 @@ HipMotor::HipMotor(std::string label, YAML::Node config, NiFpga_Status _status,
   rxdata_buffer_.position_ = 0;
   rxdata_buffer_.torque_ = 0;
   rxdata_buffer_.velocity_ = 0;
-  rxdata_buffer_.cal_stat_ = 0;
+  rxdata_buffer_.angle_difference_deg_ = 0;
   rxdata_buffer_.CAN_id_ = 0;
-  rxdata_buffer_.version_ = 0;
 
   // io_ is already set from constructor parameter (shared between motors)
 
@@ -151,7 +150,8 @@ void HipMotor::CAN_receive_feedback() {
   }
   
   // Don't auto-switch here to avoid recursion
-  // External code should check cal_stat_ and switch modes
+  // Mode transitions are controlled by the server; feedback includes the
+  // current FSM state and the MU150-to-motor angle difference.
 }
 
 void HipMotor::CAN_encode_(uint8_t (&txmsg)[8], const CAN_txdata& txdata) {
@@ -173,20 +173,21 @@ void HipMotor::CAN_encode_(uint8_t (&txmsg)[8], const CAN_txdata& txdata) {
 }
 
 void HipMotor::CAN_decode_(const uint8_t (&rxmsg)[8], CAN_rxdata* rxdata) {
-  int pos_raw, vel_raw, torque_raw, cal_raw, ver_raw, mode_raw;
+  int pos_raw, vel_raw, torque_raw, mode_raw;
+  uint16_t angle_difference_raw;
 
   pos_raw = ((int)(rxmsg[0]) << 8) | rxmsg[1];
   vel_raw = ((int)(rxmsg[2]) << 8) | rxmsg[3];
   torque_raw = ((int)(rxmsg[4]) << 8) | rxmsg[5];
-  cal_raw = ((int)(rxmsg[6] & 0x0F));
-  ver_raw = ((int)(rxmsg[7] >> 4));
+  angle_difference_raw = (static_cast<uint16_t>(rxmsg[6]) << 4) |
+                         ((static_cast<uint16_t>(rxmsg[7]) >> 4) & 0x0F);
   mode_raw = ((int)(rxmsg[7] & 0x0F));
 
   rxdata->position_ = -uint_to_float_(pos_raw, P_FB_MIN, P_FB_MAX, 16);
   rxdata->velocity_ = uint_to_float_(vel_raw, V_MIN, V_MAX, 16);
   rxdata->torque_ = uint_to_float_(torque_raw, T_MIN, T_MAX, 16);
-  rxdata->version_ = ver_raw;
-  rxdata->cal_stat_ = cal_raw;
+  rxdata->angle_difference_deg_ =
+      uint_to_float_(angle_difference_raw, MU150_CAN_DIFF_MIN_DEG, MU150_CAN_DIFF_MAX_DEG, 12);
   rxdata->mode_state_ = mode_raw;
 
   if (mode_raw == _SET_ZERO)
@@ -221,7 +222,7 @@ bool HipMotor::switch_mode(Mode next_mode) {
 
   bool success = false;
   double time_elapsed = 0;
-  const double timeout = 0.1;  // 0.1 second timeout
+  const double timeout = 0.02;  // 0.1 second timeout
 
   while (!success && time_elapsed < timeout) {
     // Set the mode
@@ -269,7 +270,7 @@ bool HipMotor::switch_mode(Mode next_mode) {
     prev_mode_ = current_mode_;
     current_mode_ = next_mode;
     
-    // After starting HALL_CALIBRATE, switch FC to CONFIG to monitor cal_stat_
+    // After starting HALL_CALIBRATE, switch FC to CONFIG for the calibration flow.
     if (next_mode == Mode::HALL_CALIBRATE) {
       usleep(10000);  // Small delay after starting calibration
       set_mode_internal_(Mode::CONFIG);  // Switch to CONFIG FC to monitor calibration

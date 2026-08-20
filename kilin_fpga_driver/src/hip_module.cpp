@@ -33,18 +33,16 @@ HipModule::HipModule(std::string label, YAML::Node config, NiFpga_Status _status
   rxdata_buffer_[0].position_ = 0;
   rxdata_buffer_[0].torque_ = 0;
   rxdata_buffer_[0].velocity_ = 0;
-  rxdata_buffer_[0].cal_stat_ = 0;
+  rxdata_buffer_[0].angle_difference_deg_ = 0;
   rxdata_buffer_[0].CAN_id_ = 0;
-  rxdata_buffer_[0].version_ = 0;
 
   rxdata_buffer_[1].mode_ = Mode::REST;
   rxdata_buffer_[1].mode_state_ = _REST_MODE;
   rxdata_buffer_[1].position_ = 0;
   rxdata_buffer_[1].torque_ = 0;
   rxdata_buffer_[1].velocity_ = 0;
-  rxdata_buffer_[1].cal_stat_ = 0;
+  rxdata_buffer_[1].angle_difference_deg_ = 0;
   rxdata_buffer_[1].CAN_id_ = 0;
-  rxdata_buffer_[1].version_ = 0;
 
   io_ = ModuleIO_CAN(_status, _fpga_session, CAN_port_);
   CAN_first_transmit_ = true;
@@ -201,20 +199,21 @@ void HipModule::CAN_encode_(uint8_t (&txmsg)[8], const CAN_txdata& txdata) {
 }
 
 void HipModule::CAN_decode_(const uint8_t (&rxmsg)[8], CAN_rxdata* rxdata) {
-  int pos_raw, vel_raw, torque_raw, cal_raw, ver_raw, mode_raw;
+  int pos_raw, vel_raw, torque_raw, mode_raw;
+  uint16_t angle_difference_raw;
 
   pos_raw = ((int)(rxmsg[0]) << 8) | rxmsg[1];
   vel_raw = ((int)(rxmsg[2]) << 8) | rxmsg[3];
   torque_raw = ((int)(rxmsg[4]) << 8) | rxmsg[5];
-  cal_raw = ((int)(rxmsg[6] & 0x0F));
-  ver_raw = ((int)(rxmsg[7] >> 4));
+  angle_difference_raw = (static_cast<uint16_t>(rxmsg[6]) << 4) |
+                         ((static_cast<uint16_t>(rxmsg[7]) >> 4) & 0x0F);
   mode_raw = ((int)(rxmsg[7] & 0x0F));
 
   rxdata->position_ = -uint_to_float_(pos_raw, P_FB_MIN, P_FB_MAX, 16);
   rxdata->velocity_ = uint_to_float_(vel_raw, V_MIN, V_MAX, 16);
   rxdata->torque_ = uint_to_float_(torque_raw, T_MIN, T_MAX, 16);
-  rxdata->version_ = ver_raw;
-  rxdata->cal_stat_ = cal_raw;
+  rxdata->angle_difference_deg_ =
+      uint_to_float_(angle_difference_raw, MU150_CAN_DIFF_MIN_DEG, MU150_CAN_DIFF_MAX_DEG, 12);
   rxdata->mode_state_ = mode_raw;
 
   if (mode_raw == _SET_ZERO)

@@ -8,8 +8,13 @@
 #define V_MIN -45.0f
 #define V_MAX 45.0f
 
-#define T_MIN -20.0f
-#define T_MAX 20.0f
+#define T_MIN -400.0f
+#define T_MAX 400.0f
+
+// Backlash feedback: MU150 encoder angle minus motor electrical-angle estimate.
+// The value is transported as an unsigned, normalized 12-bit quantity.
+#define MU150_CAN_DIFF_MIN_DEG -3.0f
+#define MU150_CAN_DIFF_MAX_DEG 3.0f
 
 #define KP_MIN 0.0f
 #define KP_MAX 500.0f

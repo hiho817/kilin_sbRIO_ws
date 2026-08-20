@@ -63,7 +63,7 @@ class HipMotor {
   double get_position() const { return rxdata_buffer_.position_; }
   double get_velocity() const { return rxdata_buffer_.velocity_; }
   double get_torque() const { return rxdata_buffer_.torque_; }
-  int get_calibrate_status() const { return rxdata_buffer_.cal_stat_; }
+  float get_angle_difference_deg() const { return rxdata_buffer_.angle_difference_deg_; }
   
  private:
   // CAN packet encoding/decoding

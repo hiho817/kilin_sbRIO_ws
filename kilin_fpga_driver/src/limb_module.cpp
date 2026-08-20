@@ -166,7 +166,9 @@ bool LimbModule::pack_tx_buffer() {
         cal_sent_steering_ = false;  // Clear calibration flag when leaving calibration mode
         break;
       case MotorMode::SET_ZERO:
-        txdata_buffer_.CMD1 = CMD_SET_ZERO;
+        if (steering_motor.pos_act_.as_float >= 0.001f || steering_motor.pos_act_.as_float <= -0.001f) {
+          txdata_buffer_.CMD1 = CMD_SET_ZERO;
+        } else txdata_buffer_.CMD1 = CMD_RESET;
         break;
       case MotorMode::HALL_CALIBRATE:
         if (!cal_sent_steering_) {

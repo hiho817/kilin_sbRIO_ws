@@ -10,6 +10,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <iomanip>
 #include <iostream>
 #include <mode.hpp>
@@ -62,8 +64,10 @@ class InputPanel {
  public:
   InputPanel() {}
 
-  void init(vector<HipModule>* mods_, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y);
-  void init_hip_motors(HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y);
+  void init(vector<HipModule>* mods_, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y,
+            std::atomic<bool>* direct_fpga_reads_enabled);
+  void init_hip_motors(HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh, vector<LimbModule>* limb_mods, bool* if_resetPanel,
+                       int term_max_x, int term_max_y, std::atomic<bool>* direct_fpga_reads_enabled);
 
   void inputHandler(WINDOW* win_, std::mutex& input_mutex);
   void reset_input_window(WINDOW* win);
@@ -89,6 +93,7 @@ class InputPanel {
   bool* if_resetPanel;
   std::mutex* main_mtx_;
   std::vector<bool>* powerboard_state_;
+  std::atomic<bool>* direct_fpga_reads_enabled_;
   // ModeFsm* fsm_;
 
  private:
@@ -100,10 +105,10 @@ class Console {
   Console() {}
 
   void init(FpgaHandler* fpga_, vector<HipModule>* mods_, vector<LimbModule>* rs485_mods, std::vector<bool>* pb_state_,
-           std::mutex* mtx_);
+           std::mutex* mtx_, std::atomic<uint64_t>* main_heartbeat, std::atomic<uint64_t>* can_heartbeat);
   void init_hip_motors(FpgaHandler* fpga_, HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh, 
                        vector<LimbModule>* rs485_mods, std::vector<bool>* pb_state_,
-                       std::mutex* mtx_);
+                       std::mutex* mtx_, std::atomic<uint64_t>* main_heartbeat, std::atomic<uint64_t>* can_heartbeat);
   void refreshWindow();
 
   int term_max_x_;
@@ -135,6 +140,14 @@ class Console {
 
   std::mutex* main_mtx_;
   std::vector<bool>* powerboard_state_;
+  std::atomic<bool> direct_fpga_reads_enabled_{false};
+  std::atomic<uint64_t>* main_heartbeat_;
+  std::atomic<uint64_t>* can_heartbeat_;
+  uint64_t previous_main_heartbeat_ = 0;
+  uint64_t previous_can_heartbeat_ = 0;
+  unsigned int unchanged_refreshes_ = 0;
+
+  void print_monitor_status_(Panel& monitor);
   // ModeFsm* fsm_;
 
   mutex input_mutex_;

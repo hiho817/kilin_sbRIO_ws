@@ -67,7 +67,8 @@ Kilin::Kilin() {
 
   load_config_();
   console_.init_hip_motors(&fpga_, hip_motor_LF_, hip_motor_LH_, hip_motor_RF_, hip_motor_RH_,
-                           &limb_modules_list_, &powerboard_state_, &main_mtx_);
+                           &limb_modules_list_, &powerboard_state_, &main_mtx_,
+                           &main_loop_heartbeat_, &can_loop_heartbeat_);
 
   fpga_.set_ni_irq_period(main_irq_period_us_, can_irq_period_us_);
 
@@ -154,41 +155,54 @@ void Kilin::interruptHandler(core::Subscriber<power_msg::PowerCmdStamped>& cmd_p
                              core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
                              core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
                              core::Publisher<motor_msg::MotorStateStamped>& state_pub_) {
+  uint32_t consecutive_timeouts = 0;
+  const uint32_t max_consecutive_timeouts = 100;  // 1 second of timeouts (10ms * 100)
+  
   while (NiFpga_IsNotError(fpga_.get_fpga_status()) && !sys_stop) {
     uint32_t irqsAsserted;
     uint32_t irqTimeout = 10;  // ms
     NiFpga_Bool TimedOut = 0;
 
     // Wait on IRQ to ensure FPGA is ready
-    fpga_.set_fpga_status(NiFpga_WaitOnIrqs(fpga_.session, fpga_.irqContext, NiFpga_Irq_0 | NiFpga_Irq_1, irqTimeout,
-                                            &irqsAsserted, &TimedOut));
+    NiFpga_Status waitStatus = NiFpga_WaitOnIrqs(fpga_.session, fpga_.irqContext, NiFpga_Irq_0 | NiFpga_Irq_1, irqTimeout,
+                                                  &irqsAsserted, &TimedOut);
+    fpga_.set_fpga_status(waitStatus);
 
     if (NiFpga_IsError(fpga_.get_fpga_status())) {
-      std::cout << red << "[FPGA Server] Error! Exiting program. LabVIEW error code: " << fpga_.get_fpga_status()
-                << reset << std::endl;
+      std::cout << red << "[FPGA Server] Error in WaitOnIrqs! Exit code: " << fpga_.get_fpga_status() << reset << std::endl;
+      break;  // Exit on FPGA error
     }
 
-    uint32_t irq0_cnt;
-    uint32_t irq1_cnt;
-
     if (TimedOut) {
-      std::cout << red << "IRQ timedout" << ", IRQ_0 cnt: " << irq0_cnt << ", IRQ_1 cnt: " << irq1_cnt << reset
-                << std::endl;
+      consecutive_timeouts++;
+      if (consecutive_timeouts > max_consecutive_timeouts) {
+        std::cout << red << "[FPGA Server] FPGA not responding for >1s! Possible hardware failure." << reset << std::endl;
+        break;  // Exit if FPGA is completely unresponsive
+      }
+      // Silently continue on timeout - this is normal
+    } else {
+      consecutive_timeouts = 0;  // Reset timeout counter on successful IRQ
     }
 
     /* if an IRQ was asserted */
     if (NiFpga_IsNotError(fpga_.get_fpga_status()) && !TimedOut) {
       if (irqsAsserted & NiFpga_Irq_0) {
         mainLoop_(cmd_pb_sub_, state_pb_pub_, cmd_sub_, state_pub_);
-        // Acknowledge IRQ to begin DMA acquisition
-        fpga_.set_fpga_status(NiFpga_AcknowledgeIrqs(fpga_.session, irqsAsserted));
       }
       if (irqsAsserted & NiFpga_Irq_1) {
         canLoop_();
         rs485Loop_();  // Update RS485 limb modules
-
-        // Acknowledge IRQ to begin DMA acquisition
+        seq++;  // Increment sequence number after processing all updates
+      }
+      
+      // Acknowledge BOTH IRQs once after processing them
+      // This prevents double-acknowledgement corruption of FPGA state
+      if (irqsAsserted != 0) {
         fpga_.set_fpga_status(NiFpga_AcknowledgeIrqs(fpga_.session, irqsAsserted));
+        if (NiFpga_IsError(fpga_.get_fpga_status())) {
+          std::cout << red << "[FPGA Server] Error acknowledging IRQs! Code: " << fpga_.get_fpga_status() << reset << std::endl;
+          break;
+        }
       }
     }
     usleep(10);
@@ -199,6 +213,7 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
                       core::Publisher<power_msg::PowerStateStamped>& state_pb_pub_,
                       core::Subscriber<motor_msg::MotorCmdStamped>& cmd_sub_,
                       core::Publisher<motor_msg::MotorStateStamped>& state_pub_) {
+  main_loop_heartbeat_.fetch_add(1, std::memory_order_relaxed);
   fpga_.pwrb_io.set_ni_pwrb(&powerboard_state_);
   fpga_.pwrb_io.get_ni_pwrb_to_buf();
 
@@ -250,6 +265,7 @@ void Kilin::mainLoop_(core::Subscriber<power_msg::PowerCmdStamped>& cmd_pb_sub_,
 }
 
 void Kilin::canLoop_() {
+  can_loop_heartbeat_.fetch_add(1, std::memory_order_relaxed);
   // Update each motor individually
   // Power switch must be on (powerboard_state_.at(2))
   if (powerboard_state_.at(2) == true) {
@@ -279,8 +295,8 @@ void Kilin::canLoop_() {
 
     // Step 3: Receive feedback for all motors
     if (hip_motor_LF_ && hip_motor_LF_->enable_) {
-      hip_motor_LF_->CAN_receive_feedback();
-      hip_motor_LF_->CAN_timeoutCheck();
+        hip_motor_LF_->CAN_receive_feedback();
+        hip_motor_LF_->CAN_timeoutCheck();
       if (hip_motor_LF_->CAN_mtr_timedout_)
         timeout_cnt_++;
       else
@@ -288,8 +304,8 @@ void Kilin::canLoop_() {
     }
 
     if (hip_motor_LH_ && hip_motor_LH_->enable_) {
-      hip_motor_LH_->CAN_receive_feedback();
-      hip_motor_LH_->CAN_timeoutCheck();
+        hip_motor_LH_->CAN_receive_feedback();
+        hip_motor_LH_->CAN_timeoutCheck();
       if (hip_motor_LH_->CAN_mtr_timedout_)
         timeout_cnt_++;
       else
@@ -297,8 +313,8 @@ void Kilin::canLoop_() {
     }
 
     if (hip_motor_RF_ && hip_motor_RF_->enable_) {
-      hip_motor_RF_->CAN_receive_feedback();
-      hip_motor_RF_->CAN_timeoutCheck();
+        hip_motor_RF_->CAN_receive_feedback();
+        hip_motor_RF_->CAN_timeoutCheck();
       if (hip_motor_RF_->CAN_mtr_timedout_)
         timeout_cnt_++;
       else
@@ -306,8 +322,8 @@ void Kilin::canLoop_() {
     }
 
     if (hip_motor_RH_ && hip_motor_RH_->enable_) {
-      hip_motor_RH_->CAN_receive_feedback();
-      hip_motor_RH_->CAN_timeoutCheck();
+        hip_motor_RH_->CAN_receive_feedback();
+        hip_motor_RH_->CAN_timeoutCheck();
       if (hip_motor_RH_->CAN_mtr_timedout_)
         timeout_cnt_++;
       else
@@ -327,7 +343,7 @@ void Kilin::rs485Loop_() {
   // Update all limb modules with RS485 communication
   for (size_t i = 0; i < limb_modules_list_.size(); i++) {
     if (powerboard_state_.at(2) == true) {  // Power switch is on
-      limb_modules_list_[i].update_motors();
+        limb_modules_list_[i].update_motors();
     }
   }
 }
@@ -454,20 +470,19 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     hub->set_error_code(limb_a.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
   }
 
-  // Module B: LH (Left Hind) - index 1
+  // Module B: RF (Right Front) - index 1
   if (limb_modules_list_.size() > 1) {
     auto* leg_b = motor_state_msg.mutable_module_b();
     
-    // Hip motor (LH)
-    if (hip_motor_LH_) {
+    // Hip motor (RF)
+    if (hip_motor_RF_) {
       auto* hip = leg_b->mutable_hip();
-      hip->set_position(hip_motor_LH_->rxdata_buffer_.position_);
-      hip->set_velocity(hip_motor_LH_->rxdata_buffer_.velocity_);
-      hip->set_torque(hip_motor_LH_->rxdata_buffer_.torque_);
-      hip->set_motor_mode(modeToProto(hip_motor_LH_->current_mode_));
-      hip->set_error_code(hip_motor_LH_->CAN_mtr_timedout_ ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
-    }
-    
+      hip->set_position(hip_motor_RF_->rxdata_buffer_.position_);
+      hip->set_velocity(hip_motor_RF_->rxdata_buffer_.velocity_);
+      hip->set_torque(hip_motor_RF_->rxdata_buffer_.torque_);
+      hip->set_motor_mode(modeToProto(hip_motor_RF_->current_mode_));
+      hip->set_error_code(hip_motor_RF_->CAN_mtr_timedout_ ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
+    }    
     // Steering and hub motors from limb module 1
     auto& limb_b = limb_modules_list_[1];
     auto* steering = leg_b->mutable_steering();
@@ -486,18 +501,18 @@ void Kilin::motorStatePack(motor_msg::MotorStateStamped& motor_state_msg) {
     hub->set_error_code(limb_b.RS485_module_timedout ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
   }
 
-  // Module C: RF (Right Front) - index 2
+  // Module C: LH (Left Hind) - index 2
   if (limb_modules_list_.size() > 2) {
     auto* leg_c = motor_state_msg.mutable_module_c();
     
-    // Hip motor (RF)
-    if (hip_motor_RF_) {
+    // Hip motor (LH)
+    if (hip_motor_LH_) {
       auto* hip = leg_c->mutable_hip();
-      hip->set_position(hip_motor_RF_->rxdata_buffer_.position_);
-      hip->set_velocity(hip_motor_RF_->rxdata_buffer_.velocity_);
-      hip->set_torque(hip_motor_RF_->rxdata_buffer_.torque_);
-      hip->set_motor_mode(modeToProto(hip_motor_RF_->current_mode_));
-      hip->set_error_code(hip_motor_RF_->CAN_mtr_timedout_ ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
+      hip->set_position(hip_motor_LH_->rxdata_buffer_.position_);
+      hip->set_velocity(hip_motor_LH_->rxdata_buffer_.velocity_);
+      hip->set_torque(hip_motor_LH_->rxdata_buffer_.torque_);
+      hip->set_motor_mode(modeToProto(hip_motor_LH_->current_mode_));
+      hip->set_error_code(hip_motor_LH_->CAN_mtr_timedout_ ? motor_msg::ERRORCODE::TIMEOUT : motor_msg::ERRORCODE::NO_ERROR);
     }
     
     // Steering and hub motors from limb module 2
@@ -790,6 +805,40 @@ void Kilin::applyPendingModeChanges() {
     hip_motor_RH_->switch_mode(pending_mode_RH_.desired_mode);
     pending_mode_RH_.pending = false;
   }
+}
+
+// Destructor: Clean up dynamically allocated resources
+Kilin::~Kilin() {
+  // Delete hip motors
+  if (hip_motor_LF_) {
+    delete hip_motor_LF_;
+    hip_motor_LF_ = nullptr;
+  }
+  if (hip_motor_LH_) {
+    delete hip_motor_LH_;
+    hip_motor_LH_ = nullptr;
+  }
+  if (hip_motor_RF_) {
+    delete hip_motor_RF_;
+    hip_motor_RF_ = nullptr;
+  }
+  if (hip_motor_RH_) {
+    delete hip_motor_RH_;
+    hip_motor_RH_ = nullptr;
+  }
+  
+  // Delete CAN IO objects
+  if (can_io_L_) {
+    delete can_io_L_;
+    can_io_L_ = nullptr;
+  }
+  if (can_io_R_) {
+    delete can_io_R_;
+    can_io_R_ = nullptr;
+  }
+  
+  // Clear limb modules vector (destructs all contained objects)
+  limb_modules_list_.clear();
 }
 
 

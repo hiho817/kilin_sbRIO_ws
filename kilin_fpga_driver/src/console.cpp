@@ -10,7 +10,8 @@ mutex cons_mtx_;
 int refresh_flag;
 
 void Console::init(FpgaHandler* fpga, vector<HipModule>* hip_mods, vector<LimbModule>* limb_mods,
-                   std::vector<bool>* pb_state_ptr_, std::mutex* mtx_ptr_) {
+                   std::vector<bool>* pb_state_ptr_, std::mutex* mtx_ptr_,
+                   std::atomic<uint64_t>* main_heartbeat, std::atomic<uint64_t>* can_heartbeat) {
   fpga_ = fpga;
 
   // Handle nullptr for hip_mods (when using individual HipMotor instances)
@@ -23,6 +24,8 @@ void Console::init(FpgaHandler* fpga, vector<HipModule>* hip_mods, vector<LimbMo
   }
 
   limb_modules_ptr_ = limb_mods;
+  main_heartbeat_ = main_heartbeat;
+  can_heartbeat_ = can_heartbeat;
 
   setlocale(LC_ALL, "");
   initscr();
@@ -33,7 +36,8 @@ void Console::init(FpgaHandler* fpga, vector<HipModule>* hip_mods, vector<LimbMo
   init_pair(CYAN_PAIR, COLOR_CYAN, COLOR_BLACK);
 
   frontend_rate_ = 3;
-  input_panel_.init(hip_mods, limb_modules_ptr_, &if_resetPanel, term_max_x_, term_max_y_);
+  input_panel_.init(hip_mods, limb_modules_ptr_, &if_resetPanel, term_max_x_, term_max_y_,
+                    &direct_fpga_reads_enabled_);
 
   input_panel_.main_mtx_ = mtx_ptr_;
   input_panel_.powerboard_state_ = pb_state_ptr_;
@@ -50,7 +54,8 @@ void Console::init(FpgaHandler* fpga, vector<HipModule>* hip_mods, vector<LimbMo
 
 void Console::init_hip_motors(FpgaHandler* fpga, HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh,
                                vector<LimbModule>* limb_mods, std::vector<bool>* pb_state_ptr_, 
-                               std::mutex* mtx_ptr_) {
+                               std::mutex* mtx_ptr_, std::atomic<uint64_t>* main_heartbeat,
+                               std::atomic<uint64_t>* can_heartbeat) {
   fpga_ = fpga;
 
   // Set individual motor pointers
@@ -64,6 +69,8 @@ void Console::init_hip_motors(FpgaHandler* fpga, HipMotor* lf, HipMotor* lh, Hip
   modR_ptr_ = nullptr;
 
   limb_modules_ptr_ = limb_mods;
+  main_heartbeat_ = main_heartbeat;
+  can_heartbeat_ = can_heartbeat;
 
   setlocale(LC_ALL, "");
   initscr();
@@ -74,7 +81,8 @@ void Console::init_hip_motors(FpgaHandler* fpga, HipMotor* lf, HipMotor* lh, Hip
   init_pair(CYAN_PAIR, COLOR_CYAN, COLOR_BLACK);
 
   frontend_rate_ = 3;
-  input_panel_.init_hip_motors(lf, lh, rf, rh, limb_modules_ptr_, &if_resetPanel, term_max_x_, term_max_y_);
+  input_panel_.init_hip_motors(lf, lh, rf, rh, limb_modules_ptr_, &if_resetPanel, term_max_x_, term_max_y_,
+                               &direct_fpga_reads_enabled_);
 
   input_panel_.main_mtx_ = mtx_ptr_;
   input_panel_.powerboard_state_ = pb_state_ptr_;
@@ -94,8 +102,8 @@ void Console::refreshWindow() {
 
   int refresh_period_ = (int)(1 / frontend_rate_) * 1000000;
   HipModule* lm_null = 0;
-  Panel p_power_("[P] Power Board ", "power", lm_null, 1, 9, 60, 40, true);
-  Panel p_cmain_("[F] FPGA Server ", "c_main", lm_null, 1, 1, 8, 40, true);
+  Panel p_power_("[P] Power Board ", "power", lm_null, 1, 10, 60, 40, true);
+  Panel p_cmain_("   FPGA Server ", "c_main", lm_null, 1, 1, 8, 40, true);
   
   // Create panels for individual hip motors or old hip modules
   Panel p_modL_("[H] L Hip (LF+LH)", "hip_motor", lm_null, 41, 1, (term_max_y_ - 2) / 2 - 1, 60, true);
@@ -109,32 +117,59 @@ void Console::refreshWindow() {
   while (1) {
     cons_mtx_.lock();
 
-    p_power_.print_pwrb_info(fpga_, powerboard_state_->at(0), powerboard_state_->at(1), powerboard_state_->at(2));
-    // p_cmain_.print_mode_main(Behavior::TCP_SLAVE, fsm_->workingMode_);
-    
-    // Display hip motors or old hip modules
-    // Left panel shows motors 0 (LF) and 1 (LH)
-    if (hip_motor_LF_ || hip_motor_LH_) {
-      p_modL_.print_hip_motor_info(hip_motor_LF_, hip_motor_LH_);
-    } else if (modL_ptr_ != nullptr) {
-      p_modL_.infoDisplay();
+    print_monitor_status_(p_cmain_);
+
+    // Safe monitor mode is the default. It only reads heartbeat atomics, so
+    // it never issues NI-FPGA calls concurrently with the IRQ thread.
+    if (direct_fpga_reads_enabled_.load(std::memory_order_relaxed)) {
+      p_power_.print_pwrb_info(fpga_, powerboard_state_->at(0), powerboard_state_->at(1), powerboard_state_->at(2));
+
+      if (hip_motor_LF_ || hip_motor_LH_) {
+        p_modL_.print_hip_motor_info(hip_motor_LF_, hip_motor_LH_);
+      } else if (modL_ptr_ != nullptr) {
+        p_modL_.infoDisplay();
+      }
+
+      if (hip_motor_RF_ || hip_motor_RH_) {
+        p_modR_.print_hip_motor_info(hip_motor_RF_, hip_motor_RH_);
+      } else if (modR_ptr_ != nullptr) {
+        p_modR_.infoDisplay();
+      }
+
+      p_mod_test_RS485.print_limb_test(fpga_, limb_modules_ptr_);
     }
-    
-    // Right panel shows motors 2 (RF) and 3 (RH)
-    if (hip_motor_RF_ || hip_motor_RH_) {
-      p_modR_.print_hip_motor_info(hip_motor_RF_, hip_motor_RH_);
-    } else if (modR_ptr_ != nullptr) {
-      p_modR_.infoDisplay();
-    }
-    
-    p_mod_test_RS485.print_limb_test(fpga_, limb_modules_ptr_);
     cons_mtx_.unlock();
 
     usleep(0.1 * 1000 * 1000);
   }
 }
 
-void InputPanel::init(vector<HipModule>* hip_mods, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x, int term_max_y) {
+void Console::print_monitor_status_(Panel& monitor) {
+  const uint64_t main_heartbeat = main_heartbeat_ ? main_heartbeat_->load(std::memory_order_relaxed) : 0;
+  const uint64_t can_heartbeat = can_heartbeat_ ? can_heartbeat_->load(std::memory_order_relaxed) : 0;
+
+  if (main_heartbeat == previous_main_heartbeat_ && can_heartbeat == previous_can_heartbeat_) {
+    ++unchanged_refreshes_;
+  } else {
+    unchanged_refreshes_ = 0;
+  }
+  previous_main_heartbeat_ = main_heartbeat;
+  previous_can_heartbeat_ = can_heartbeat;
+
+  const bool safe_monitor = !direct_fpga_reads_enabled_.load(std::memory_order_relaxed);
+  const bool stale = unchanged_refreshes_ >= 10;  // 1 second at the 10 Hz console refresh rate.
+
+  mvwprintw(monitor.win_, 2, 1, "Console: %-14s", safe_monitor ? "SAFE MONITOR" : "DIRECT DEBUG");
+  mvwprintw(monitor.win_, 3, 1, "Main heartbeat: %10llu", static_cast<unsigned long long>(main_heartbeat));
+  mvwprintw(monitor.win_, 4, 1, "CAN  heartbeat: %10llu", static_cast<unsigned long long>(can_heartbeat));
+  mvwprintw(monitor.win_, 5, 1, "Control loop: %s", stale ? "STALE / NOT PROGRESSING" : "RUNNING");
+  mvwprintw(monitor.win_, 6, 1, "Switch page: [s] Safe  [d] Debug");
+  mvwprintw(monitor.win_, 7, 1, "Press key before ':' command input");
+  wrefresh(monitor.win_);
+}
+
+void InputPanel::init(vector<HipModule>* hip_mods, vector<LimbModule>* limb_mods, bool* if_resetPanel, int term_max_x,
+                      int term_max_y, std::atomic<bool>* direct_fpga_reads_enabled) {
   win_ = newwin(3, term_max_x - 1, term_max_y - 3, 1);
 
   // Handle nullptr for hip_mods (when using individual HipMotor instances)
@@ -147,13 +182,14 @@ void InputPanel::init(vector<HipModule>* hip_mods, vector<LimbModule>* limb_mods
   }
 
   limb_modules_ptr_ = limb_mods;
+  direct_fpga_reads_enabled_ = direct_fpga_reads_enabled;
 
   thread = new std::thread(&InputPanel::inputHandler, this, win_, std::ref(mutex_));
 }
 
 void InputPanel::init_hip_motors(HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMotor* rh,
                                   vector<LimbModule>* limb_mods, bool* if_resetPanel, 
-                                  int term_max_x, int term_max_y) {
+                                  int term_max_x, int term_max_y, std::atomic<bool>* direct_fpga_reads_enabled) {
   win_ = newwin(3, term_max_x - 1, term_max_y - 3, 1);
 
   // Set individual motor pointers
@@ -167,6 +203,7 @@ void InputPanel::init_hip_motors(HipMotor* lf, HipMotor* lh, HipMotor* rf, HipMo
   modR_ptr_ = nullptr;
 
   limb_modules_ptr_ = limb_mods;
+  direct_fpga_reads_enabled_ = direct_fpga_reads_enabled;
 
   thread = new std::thread(&InputPanel::inputHandler, this, win_, std::ref(mutex_));
 }
@@ -188,6 +225,12 @@ void InputPanel::inputHandler(WINDOW* win_, std::mutex& input_mutex) {
       if (ch == 'E') {
         refresh_flag = 1;
         refresh();
+      }
+      if (ch == 's' && direct_fpga_reads_enabled_) {
+        direct_fpga_reads_enabled_->store(false, std::memory_order_relaxed);
+      }
+      if (ch == 'd' && direct_fpga_reads_enabled_) {
+        direct_fpga_reads_enabled_->store(true, std::memory_order_relaxed);
       }
       // if (ch == 'R') {
       //   for (size_t i = 0; i < limb_modules_ptr_->size(); i++) {
@@ -633,7 +676,7 @@ void Panel::infoDisplay()  // type = module
   mvwprintw(win_, y_org + 6, 1, "[D] (tx) KD:   %5.5f", md_ptr_->txdata_buffer_[0].KD_);
   // reply
   mvwprintw(win_, 3, 30, "(rx) TIMEDOUT: %4d", md_ptr_->CAN_rx_timedout_[0]);
-  mvwprintw(win_, y_org + 2, 30, "(rx) Ver:   %7d", md_ptr_->rxdata_buffer_[0].version_);
+  mvwprintw(win_, y_org + 2, 30, "(rx) Diff: %+.4f deg", md_ptr_->rxdata_buffer_[0].angle_difference_deg_);
   mvwprintw(win_, y_org + 3, 30, "(rx) Mode:  %7d", md_ptr_->rxdata_buffer_[0].mode_state_);
   mvwprintw(win_, y_org + 4, 30, "(rx) Pos:   %4.5f", md_ptr_->rxdata_buffer_[0].position_);
   mvwprintw(win_, y_org + 5, 30, "(rx) Vel:   %4.5f", md_ptr_->rxdata_buffer_[0].velocity_);
@@ -650,7 +693,7 @@ void Panel::infoDisplay()  // type = module
   mvwprintw(win_, y_org + 15, 1, "[D] (tx) KD:   %5.5f", md_ptr_->txdata_buffer_[1].KD_);
   // reply
   mvwprintw(win_, 12, 30, "(rx) TIMEDOUT: %4d", md_ptr_->CAN_rx_timedout_[1]);
-  mvwprintw(win_, y_org + 11, 30, "(rx) Ver:   %7d", md_ptr_->rxdata_buffer_[1].version_);
+  mvwprintw(win_, y_org + 11, 30, "(rx) Diff: %+.4f deg", md_ptr_->rxdata_buffer_[1].angle_difference_deg_);
   mvwprintw(win_, y_org + 12, 30, "(rx) Mode:  %7d", md_ptr_->rxdata_buffer_[1].mode_state_);
   mvwprintw(win_, y_org + 13, 30, "(rx) Pos:   %4.5f", md_ptr_->rxdata_buffer_[1].position_);
   mvwprintw(win_, y_org + 14, 30, "(rx) Vel:   %4.5f", md_ptr_->rxdata_buffer_[1].velocity_);
@@ -708,12 +751,11 @@ void Panel::print_hip_motor_info(HipMotor* motor1, HipMotor* motor2) {
     mvwprintw(win_, y_org + 8, 1, "[D] (tx) KD:   %5.5f", motor1->txdata_buffer_.KD_);
     // reply
     mvwprintw(win_, 3, 30, "(rx) TIMEDOUT: %4d", motor1->CAN_rx_timedout_);
-    mvwprintw(win_, y_org + 4, 30, "(rx) Ver:   %7d", motor1->rxdata_buffer_.version_);
+    mvwprintw(win_, y_org + 4, 30, "(rx) Diff: %+.4f deg", motor1->rxdata_buffer_.angle_difference_deg_);
     mvwprintw(win_, y_org + 5, 30, "(rx) FSM:   %7d", motor1->rxdata_buffer_.mode_state_);
     mvwprintw(win_, y_org + 6, 30, "(rx) Pos:   %4.5f", motor1->rxdata_buffer_.position_);
     mvwprintw(win_, y_org + 7, 30, "(rx) Vel:   %4.5f", motor1->rxdata_buffer_.velocity_);
     mvwprintw(win_, y_org + 8, 30, "(rx) Trq:   %4.5f", motor1->rxdata_buffer_.torque_);
-    mvwprintw(win_, y_org + 9, 30, "(rx) Cal:   %7d", motor1->rxdata_buffer_.cal_stat_);
   } else {
     mvwprintw(win_, 1, 1, "Motor 1 not available");
   }
@@ -767,12 +809,11 @@ void Panel::print_hip_motor_info(HipMotor* motor1, HipMotor* motor2) {
     mvwprintw(win_, y_motor2_start + y_org + 8, 1, "[D] (tx) KD:   %5.5f", motor2->txdata_buffer_.KD_);
     // reply
     mvwprintw(win_, y_motor2_start + 2, 30, "(rx) TIMEDOUT: %4d", motor2->CAN_rx_timedout_);
-    mvwprintw(win_, y_motor2_start + y_org + 4, 30, "(rx) Ver:   %7d", motor2->rxdata_buffer_.version_);
+    mvwprintw(win_, y_motor2_start + y_org + 4, 30, "(rx) Diff: %+.4f deg", motor2->rxdata_buffer_.angle_difference_deg_);
     mvwprintw(win_, y_motor2_start + y_org + 5, 30, "(rx) FSM:   %7d", motor2->rxdata_buffer_.mode_state_);
     mvwprintw(win_, y_motor2_start + y_org + 6, 30, "(rx) Pos:   %4.5f", motor2->rxdata_buffer_.position_);
     mvwprintw(win_, y_motor2_start + y_org + 7, 30, "(rx) Vel:   %4.5f", motor2->rxdata_buffer_.velocity_);
     mvwprintw(win_, y_motor2_start + y_org + 8, 30, "(rx) Trq:   %4.5f", motor2->rxdata_buffer_.torque_);
-    mvwprintw(win_, y_motor2_start + y_org + 9, 30, "(rx) Cal:   %7d", motor2->rxdata_buffer_.cal_stat_);
   } else {
     mvwprintw(win_, 12, 1, "Motor 2 not available");
   }

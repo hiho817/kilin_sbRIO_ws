@@ -168,7 +168,7 @@ void PwrbIO::get_ni_pwrb_to_buf() {
   for (int i = 0; i < 24; i++) {
     int i_half = i / 2;
     if (i % 2 == 1)  // is odd
-      set_v_buf_(i_half, rx_arr[i] * pwrb_cal_params_.V.factor[i_half] + pwrb_cal_params_.V.factor[i_half]);
+      set_v_buf_(i_half, rx_arr[i] * pwrb_cal_params_.V.factor[i_half] + pwrb_cal_params_.V.offset[i_half]);
     else // is even
       set_i_buf_(i_half, rx_arr[i] * pwrb_cal_params_.I.factor[i_half] + pwrb_cal_params_.I.offset[i_half]);
   }
